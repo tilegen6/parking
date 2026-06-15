@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Тулчейн и Линтеры
+.history/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Среды разработки (IDE)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Секреты окружения — НЕ коммитим, но шаблон .env.example оставляем
+.env
+.env.*
+!.env.example
+
+# Docker и Локальные базы данных
+.docker-volumes/
+postgres_data/
+
+# Временные файлы
+*.tmp
+
+# OS файлы
+.DS_Store
+Thumbs.db

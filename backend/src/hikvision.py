@@ -65,7 +65,11 @@ def _parse_time(value: str | None) -> datetime:
 
 def parse_xml(payload: bytes | str) -> ParsedEvent:
     """Разобрать XML-событие EventNotificationAlert."""
-    raw = payload.decode("utf-8", errors="replace") if isinstance(payload, bytes) else payload
+    raw = (
+        payload.decode("utf-8", errors="replace")
+        if isinstance(payload, bytes)
+        else payload
+    )
     event = ParsedEvent(raw_payload=raw)
     try:
         root = ET.fromstring(raw)
@@ -94,7 +98,7 @@ def parse_xml(payload: bytes | str) -> ParsedEvent:
     return event
 
 
-def parse_json(data: dict) -> ParsedEvent:
+def parse_json(data: dict[str, object]) -> ParsedEvent:
     """Разобрать JSON-событие (плоский или вложенный в ANPR/AccessControllerEvent)."""
     import json
 
@@ -136,7 +140,7 @@ def parse_json(data: dict) -> ParsedEvent:
     conf = pick("confidenceLevel", "confidence")
     if conf is not None:
         try:
-            value = float(conf)
+            value = float(str(conf))
             event.confidence = value / 100 if value > 1 else value
         except (ValueError, TypeError):
             pass

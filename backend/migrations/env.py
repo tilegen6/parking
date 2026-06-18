@@ -6,9 +6,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from src import models  # noqa: F401  (регистрирует модели в Base.metadata)
 from src.config import settings
 from src.database import Base
-from src import models  # noqa: F401  (регистрирует модели в Base.metadata)
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

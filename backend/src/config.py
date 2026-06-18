@@ -7,7 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        # .env лежит в корне репозитория (рядом с docker-compose).
+        # "../.env" — когда backend запущен локально из папки backend/;
+        # ".env" — запасной вариант. В Docker переменные приходят из окружения.
+        env_file=("../.env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     # --- Application ---
@@ -18,7 +23,9 @@ class Settings(BaseSettings):
 
     # --- PostgreSQL ---
     postgres_user: str = "parking_user"
-    postgres_password: str = "parking_password"
+    # Секрет: без значения по умолчанию — обязателен, иначе приложение упадёт
+    # с понятной ошибкой (никаких «паролей» в коде).
+    postgres_password: str
     postgres_db: str = "parking_db"
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -32,11 +39,18 @@ class Settings(BaseSettings):
     # --- MinIO ---
     minio_endpoint: str = "minio:9000"
     minio_root_user: str = "minio_admin"
-    minio_root_password: str = "minio_password"
+    # Секрет: без значения по умолчанию — обязателен
+    minio_root_password: str
     minio_bucket: str = "parking-photos"
     minio_secure: bool = False
     # Публичный адрес, по которому фронтенд скачивает фото (если отличается от endpoint)
     minio_public_url: str = "http://localhost:9000"
+
+    # --- Parking sessions (ТЗ §2.4, §6.2) ---
+    # Порог уверенности: ниже — событие low_confidence, сессия не создаётся
+    recognition_min_confidence: float = 0.85
+    # Окно дедупликации повторных событий одного номера, секунд
+    session_dedup_window_seconds: int = 30
 
     # --- CORS ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
@@ -46,6 +60,14 @@ class Settings(BaseSettings):
         """Async-строка подключения для SQLAlchemy / asyncpg."""
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def database_url_sync(self) -> str:
+        """Sync-строка подключения для Alembic-миграций."""
+        return (
+            f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
@@ -62,7 +84,9 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Обязательные поля (пароли) приходят из окружения/.env, а не из аргументов —
+    # mypy об этом не знает, поэтому глушим его call-arg для этого вызова.
+    return Settings()  # type: ignore[call-arg]
 
 
 settings = get_settings()

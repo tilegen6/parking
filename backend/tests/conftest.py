@@ -1,0 +1,66 @@
+"""Общие фикстуры тестов: in-memory SQLite + изолированное FastAPI-приложение.
+
+Используется StaticPool — единое соединение, чтобы in-memory БД была общей
+для сидинга и для запросов через клиент.
+"""
+
+import os
+
+# Секреты обязательны для Settings — задаём до импорта src.config
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+os.environ.setdefault("MINIO_ROOT_PASSWORD", "test")
+
+import pytest_asyncio
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
+
+from src.database import Base, get_session
+from src.modules import session as session_module
+
+
+@pytest_asyncio.fixture
+async def engine():
+    eng = create_async_engine(
+        "sqlite+aiosqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield eng
+    await eng.dispose()
+
+
+@pytest_asyncio.fixture
+async def sessionmaker_(engine):
+    return async_sessionmaker(engine, expire_on_commit=False)
+
+
+@pytest_asyncio.fixture
+async def db(sessionmaker_):
+    """Сессия для прямого сидинга/проверок в БД."""
+    async with sessionmaker_() as s:
+        yield s
+
+
+@pytest_asyncio.fixture
+async def client(sessionmaker_):
+    """HTTP-клиент к минимальному приложению с роутером сессий."""
+    app = FastAPI()
+    app.include_router(session_module.router)
+
+    async def _override_get_session():
+        async with sessionmaker_() as s:
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
+
+    app.dependency_overrides[get_session] = _override_get_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c

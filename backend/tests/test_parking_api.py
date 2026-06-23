@@ -85,7 +85,9 @@ async def test_active_endpoint(client, seeded):
     assert len(items) == 2
     assert all(s["status"] == "active" for s in items)
     # у активных есть посчитанное время стоянки
-    assert all(s["parked_seconds"] is not None and s["parked_seconds"] >= 0 for s in items)
+    assert all(
+        s["parked_seconds"] is not None and s["parked_seconds"] >= 0 for s in items
+    )
 
 
 async def test_get_one_closed(client, seeded):

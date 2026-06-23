@@ -148,9 +148,7 @@ async def _handle_entry(
     return SessionResult("created", parking.id)
 
 
-async def _handle_exit(
-    session: AsyncSession, event: RecognitionEvent
-) -> SessionResult:
+async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> SessionResult:
     active = await find_active_session(session, event.plate_number)  # type: ignore[arg-type]
 
     if active is None:
@@ -219,8 +217,12 @@ async def list_sessions(
     session: Annotated[AsyncSession, Depends(get_session)],
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    plate: str | None = Query(None, description="Поиск по номеру (частичное совпадение)"),
-    status: str | None = Query(None, description="active / unpaid / paid / cancelled / whitelist"),
+    plate: str | None = Query(
+        None, description="Поиск по номеру (частичное совпадение)"
+    ),
+    status: str | None = Query(
+        None, description="active / unpaid / paid / cancelled / whitelist"
+    ),
     date_from: date | None = Query(None, description="Фильтр по дате въезда (с)"),
     date_to: date | None = Query(None, description="Фильтр по дате въезда (по)"),
     sort: str = Query("entry_time", description="Поле сортировки"),

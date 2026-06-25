@@ -1,0 +1,40 @@
+# Шаблон конфигурации Alertmanager. Значения ${...} подставляются из .env
+# init-контейнером (envsubst) при старте, чтобы токен не лежал в репозитории.
+#
+# Канал по умолчанию — Telegram. Чтобы переключиться на e-mail/Slack,
+# замените блок receivers (примеры закомментированы ниже).
+route:
+  receiver: telegram
+  group_by: ["alertname"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token: "${ALERT_TELEGRAM_BOT_TOKEN}"
+        chat_id: ${ALERT_TELEGRAM_CHAT_ID}
+        parse_mode: HTML
+        send_resolved: true
+        message: |
+          {{ range .Alerts }}<b>[{{ .Status | toUpper }}] {{ .Labels.severity | toUpper }}</b>
+          {{ .Annotations.summary }}
+          {{ .Annotations.description }}
+          {{ end }}
+
+  # --- Альтернатива: e-mail ---
+  # - name: email
+  #   email_configs:
+  #     - to: "ops@example.com"
+  #       from: "alertmanager@example.com"
+  #       smarthost: "smtp.example.com:587"
+  #       auth_username: "alertmanager@example.com"
+  #       auth_password: "${SMTP_PASSWORD}"
+  #
+  # --- Альтернатива: Slack ---
+  # - name: slack
+  #   slack_configs:
+  #     - api_url: "${SLACK_WEBHOOK_URL}"
+  #       channel: "#alerts"
+  #       send_resolved: true

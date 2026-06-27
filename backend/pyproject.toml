@@ -2,17 +2,13 @@
 line-length = 88
 target-version = "py312"
 
-[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 ignore = []
 
+[tool.ruff.lint]
+
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 strict = true
 ignore_missing_imports = true
 exclude = ["migrations/"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-pythonpath = ["."]
-testpaths = ["tests"]

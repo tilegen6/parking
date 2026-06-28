@@ -3,3 +3,6 @@ ruff==0.15.16
 mypy==2.1.0
 pytest==9.0.3
 httpx==0.28.1
+numpy>=1.26
+opencv-python-headless>=4.9
+jsonschema>=4.0

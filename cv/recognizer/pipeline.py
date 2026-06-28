@@ -1,0 +1,139 @@
+"""Оркестратор пайплайна распознавания.
+
+Картинки: каждое изображение -> независимое событие.
+Видео: трекинг + majority-vote по треку -> одно событие на трек.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .config import RecognizerConfig
+from .events import build_event, normalize_direction
+from .normalize import normalize_plate
+from .quality import frame_ok
+from .vote import MajorityVote
+
+
+@dataclass
+class FrameResult:
+    plate: str  # нормализованный (или очищенный) текст
+    confidence: float
+    box: tuple[int, int, int, int] | None
+    is_valid: bool  # прошёл ли формат KZ
+
+
+def make_detector(cfg: RecognizerConfig):
+    from .detect import WholeFrameDetector
+
+    return WholeFrameDetector()
+
+
+def make_ocr(cfg: RecognizerConfig):
+    if cfg.engine == "template":
+        from .ocr import TemplateOcr
+
+        return TemplateOcr()
+    if cfg.engine == "easyocr":
+        from .ocr import EasyOcr
+
+        return EasyOcr()
+    raise ValueError(f"Неизвестный движок OCR: {cfg.engine}")
+
+
+class Pipeline:
+    def __init__(self, cfg: RecognizerConfig, detector=None, ocr=None) -> None:
+        self.cfg = cfg
+        self.detector = detector or make_detector(cfg)
+        self.ocr = ocr or make_ocr(cfg)
+
+    def _best(self, ocr_results) -> FrameResult | None:
+        """Выбрать лучший валидный KZ-номер; иначе лучший по confidence."""
+        scored = []
+        for r in ocr_results:
+            norm = normalize_plate(r.text)
+            scored.append((norm.is_valid, r.confidence, norm.normalized, r.box))
+        if not scored:
+            return None
+        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
+        is_valid, conf, plate, box = scored[0]
+        return FrameResult(plate=plate, confidence=conf, box=box, is_valid=is_valid)
+
+    def process_frame(self, image) -> FrameResult | None:
+        results = []
+        for region in self.detector.detect(image):
+            results.extend(self.ocr.read(region.image))
+        return self._best(results)
+
+    def run_images(self, source, sinks: dict) -> list[dict]:
+        events = []
+        for frame in source.frames():
+            res = self.process_frame(frame.image)
+            rec = self._emit(res, frame, sinks)
+            if rec:
+                events.append(rec)
+        return events
+
+    def run_video(self, source, sinks: dict) -> list[dict]:
+        from .track import SimpleTracker
+
+        tracker = SimpleTracker()
+        votes: dict[int, MajorityVote] = {}
+        last: dict[int, tuple] = {}
+        for frame in source.frames():
+            # фильтр качества (ТЗ 2.1) — только для видеопотока
+            if not frame_ok(
+                frame.image, self.cfg.blur_threshold, self.cfg.dark_threshold
+            ):
+                continue
+            res = self.process_frame(frame.image)
+            if not res or not res.plate:
+                continue
+            h, w = frame.image.shape[:2]
+            box = res.box or (0, 0, w, h)
+            tid = tracker.update([box])[0]
+            votes.setdefault(tid, MajorityVote()).add(res.plate, res.confidence)
+            last[tid] = (frame, res)
+
+        events = []
+        for tid, vote in votes.items():
+            vr = vote.result()
+            if not vr:
+                continue
+            frame, res = last[tid]
+            voted = FrameResult(
+                plate=vr.plate,
+                confidence=vr.confidence,
+                box=res.box,
+                is_valid=normalize_plate(vr.plate).is_valid,
+            )
+            rec = self._emit(voted, frame, sinks)
+            if rec:
+                events.append(rec)
+        return events
+
+    def _emit(self, res: FrameResult | None, frame, sinks: dict) -> dict | None:
+        if res is None:
+            return None
+        below = res.confidence < self.cfg.confidence_threshold
+        flag = "ok" if (res.is_valid and not below) else "low_confidence"
+        event = build_event(
+            plate_number=res.plate or None,
+            direction=normalize_direction(self.cfg.direction),
+            confidence=round(res.confidence, 3),
+            camera_name=self.cfg.camera_name or frame.source_name,
+            event_time=frame.timestamp,
+        )
+        contract = event.to_contract()
+        record = {**contract, "flag": flag, "frame": frame.source_name}
+
+        for s in sinks.get("json", []):
+            s.write(record)
+        for s in sinks.get("annot", []):
+            s.write(frame.image, event.plate_number, res.box)
+        for s in sinks.get("backend", []):
+            try:
+                record["backend_response"] = s.send(event.to_backend_json())
+            except Exception as e:  # noqa: BLE001
+                record["backend_error"] = str(e)
+        return record

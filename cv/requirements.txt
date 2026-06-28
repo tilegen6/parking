@@ -1,5 +1,11 @@
-# cv integration lab dependencies
+# cv integration lab + own CV recognizer (own-cv-v1) dependencies
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 httpx==0.28.1
+
+# own CV recognizer — лёгкий движок (без torch)
+numpy>=1.26
+opencv-python-headless>=4.9
+# Опциональный тяжёлый OCR (--engine easyocr) тянет torch; ставится по необходимости:
+# easyocr>=1.7

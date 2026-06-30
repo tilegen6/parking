@@ -117,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
         if "backend_error" in e:
             line += f"  backend_error: {e['backend_error']}"
         print(line)
+        # при низкой уверенности показать, что ещё распозналось на кадре
+        alts = [a for a in e.get("candidates", []) if a != e["plate_number"]]
+        if e["flag"] == "low_confidence" and alts:
+            print(f"{'':>22}прочее на кадре: {', '.join(alts[:4])}")
     return 0
 
 

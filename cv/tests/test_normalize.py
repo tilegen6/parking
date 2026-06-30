@@ -1,6 +1,7 @@
 """Тесты нормализации/валидации номеров (без тяжёлых зависимостей)."""
 
 from recognizer.normalize import normalize_plate, validate_kz
+from recognizer.pipeline import plate_likeness
 
 
 def test_valid_formats():
@@ -46,3 +47,11 @@ def test_invalid_plate():
 def test_empty():
     r = normalize_plate("")
     assert not r.is_valid
+
+
+def test_plate_likeness_prefers_number_over_words():
+    # на реальном фото номер должен «весить» больше названия региона/слогана
+    assert plate_likeness("777ABC02") > plate_likeness("CALIFORNIA")
+    assert plate_likeness("CALIFORNIA") == 0.0  # длинное, без цифр
+    assert plate_likeness("THE") == 0.0  # слишком короткое
+    assert plate_likeness("5ABC123") > 0.8  # типичный номер: длина 7, буквы+цифры

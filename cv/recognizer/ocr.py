@@ -103,8 +103,27 @@ class TemplateOcr(PlateOcr):
 # ------------------------------ EasyOcr (реальное) -----------------------------
 
 
+def _ensure_ssl_certs() -> None:
+    """macOS python.org-сборка не ставит корневые сертификаты, из-за чего EasyOCR
+    не может скачать модели (SSL CERTIFICATE_VERIFY_FAILED). Подставляем bundle certifi.
+    """
+    import os
+
+    if os.environ.get("SSL_CERT_FILE"):
+        return
+    try:
+        import certifi
+    except ImportError:
+        return
+    os.environ["SSL_CERT_FILE"] = certifi.where()
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
+
+
 class EasyOcr(PlateOcr):
-    def __init__(self, languages: tuple[str, ...] = ("en",)) -> None:
+    def __init__(
+        self, languages: tuple[str, ...] = ("en",), preprocess: bool = False
+    ) -> None:
+        _ensure_ssl_certs()
         try:
             import easyocr
         except ImportError as e:
@@ -112,13 +131,15 @@ class EasyOcr(PlateOcr):
                 "EasyOCR не установлен. `pip install easyocr` "
                 "или используйте --engine template"
             ) from e
-        from .preprocess import preprocess_plate
+        self._preprocess = None
+        if preprocess:
+            from .preprocess import preprocess_plate
 
-        self._preprocess = preprocess_plate
-        self._reader = easyocr.Reader(list(languages), gpu=False)
+            self._preprocess = preprocess_plate
+        self._reader = easyocr.Reader(list(languages), gpu=False, verbose=False)
 
     def read(self, image: np.ndarray) -> list[OcrResult]:
-        prepared = self._preprocess(image)
+        prepared = self._preprocess(image) if self._preprocess else image
         results: list[OcrResult] = []
         for box, text, conf in self._reader.readtext(prepared):
             xs = [int(p[0]) for p in box]

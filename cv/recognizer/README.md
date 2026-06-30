@@ -13,8 +13,8 @@ CV→backend. Закрывает раздел ТЗ 2.1–2.5.
 cd cv
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt        # numpy + opencv (лёгкий движок, без torch)
-# Опционально, реальный OCR для фото (тянет torch):
-# pip install easyocr
+# Реальный OCR для фото (тянет torch; certifi нужен для скачивания моделей на macOS):
+pip install easyocr certifi
 ```
 
 ## Как протестить
@@ -24,7 +24,7 @@ pip install -r requirements.txt        # numpy + opencv (лёгкий движо
 ```bash
 cd cv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q          # 29 тестов: нормализация, vote, трекинг, события, качество, e2e на синтетике
+pytest -q          # 30 тестов: нормализация, vote, трекинг, события, качество, e2e на синтетике
 ```
 
 ### 2. Офлайн-демо (синтетические KZ-номера, движок `template`)
@@ -37,15 +37,27 @@ python recognize.py --demo --annotate --direction entry
 # -> out/annotated/*.png   (кадры с боксом и распознанным номером)
 ```
 
-### 3. Свои картинки / видео
+### 3. Реальные фото номеров (EasyOCR) — «показал фото → получил номер»
 
 ```bash
-# папка фото (реальным движком — нужен easyocr):
-python recognize.py /путь/к/фото/ --engine easyocr --direction entry --annotate
-
-# видео (трекинг + majority-vote по кадрам):
-python recognize.py clip.mp4 --video --engine easyocr --direction entry --fps 5
+# 1) поставить реальный движок (один раз):
+pip install easyocr certifi
+# 2) положить свои фото в cv/photos/ и запустить:
+python recognize.py photos/ --engine easyocr --annotate --direction entry
 ```
+
+Результат:
+- в консоли — распознанный номер по каждому фото (+ что ещё нашлось на кадре);
+- `out/annotated/*.png` — кадры с подписанным номером;
+- `out/events.jsonl` — события контракта.
+
+Видео так же: `python recognize.py clip.mp4 --video --engine easyocr --direction entry`.
+
+**Что важно про реальные фото:**
+- Для KZ-номеров формат-фильтр сам выбирает номер среди прочего текста на кадре — даже если в кадре есть надписи/шильдики.
+- Лучше всего работают **plate-доминантные** снимки (номер крупно/по центру). На «грязных» полнокадровых сценах с мелким номером результат шумит — это ожидаемо для MVP без отдельного детектора пластины (см. ниже).
+- Порог уверенности — `--confidence 0.85` (ТЗ). Ниже порога номер всё равно выводится, но помечается `low_confidence` (на ручную проверку). Снизить: `--confidence 0.5`.
+- Первый запуск EasyOCR качает модели (~100 МБ) в `~/.EasyOCR/`.
 
 ### 4. Сквозная интеграция с backend
 

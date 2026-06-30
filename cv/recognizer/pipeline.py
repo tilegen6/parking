@@ -6,13 +6,35 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 
 from .config import RecognizerConfig
 from .events import build_event, normalize_direction
 from .normalize import normalize_plate
 from .quality import frame_ok
 from .vote import MajorityVote
+
+_ALNUM = re.compile(r"[^A-Z0-9]")
+
+
+def plate_likeness(text: str) -> float:
+    """Эвристика «похоже на автономер»: длина 4-9, смесь букв и цифр.
+
+    Нужна, чтобы на реальном фото выбрать номер, а не название региона/слоган.
+    """
+    c = _ALNUM.sub("", (text or "").upper())
+    n = len(c)
+    if not (4 <= n <= 9):
+        return 0.0
+    has_digit = any(ch.isdigit() for ch in c)
+    has_alpha = any(ch.isalpha() for ch in c)
+    score = 0.6 if (has_digit and has_alpha) else 0.2
+    if 6 <= n <= 8:
+        score += 0.4
+    elif n in (5, 9):
+        score += 0.2
+    return min(1.0, score)
 
 
 @dataclass
@@ -21,6 +43,7 @@ class FrameResult:
     confidence: float
     box: tuple[int, int, int, int] | None
     is_valid: bool  # прошёл ли формат KZ
+    alts: list[str] = field(default_factory=list)  # прочие распознанные тексты
 
 
 def make_detector(cfg: RecognizerConfig):
@@ -48,16 +71,27 @@ class Pipeline:
         self.ocr = ocr or make_ocr(cfg)
 
     def _best(self, ocr_results) -> FrameResult | None:
-        """Выбрать лучший валидный KZ-номер; иначе лучший по confidence."""
+        """Выбрать кандидата: валидный формат -> похоже-на-номер -> confidence."""
         scored = []
         for r in ocr_results:
             norm = normalize_plate(r.text)
-            scored.append((norm.is_valid, r.confidence, norm.normalized, r.box))
+            scored.append(
+                (
+                    norm.is_valid,
+                    plate_likeness(r.text),
+                    r.confidence,
+                    norm.normalized,
+                    r.box,
+                )
+            )
         if not scored:
             return None
-        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
-        is_valid, conf, plate, box = scored[0]
-        return FrameResult(plate=plate, confidence=conf, box=box, is_valid=is_valid)
+        scored.sort(key=lambda t: (t[0], round(t[1], 1), t[2]), reverse=True)
+        is_valid, _like, conf, plate, box = scored[0]
+        alts = [t[3] for t in scored[:5] if t[3]]
+        return FrameResult(
+            plate=plate, confidence=conf, box=box, is_valid=is_valid, alts=alts
+        )
 
     def process_frame(self, image) -> FrameResult | None:
         results = []
@@ -106,6 +140,7 @@ class Pipeline:
                 confidence=vr.confidence,
                 box=res.box,
                 is_valid=normalize_plate(vr.plate).is_valid,
+                alts=res.alts,
             )
             rec = self._emit(voted, frame, sinks)
             if rec:
@@ -125,7 +160,12 @@ class Pipeline:
             event_time=frame.timestamp,
         )
         contract = event.to_contract()
-        record = {**contract, "flag": flag, "frame": frame.source_name}
+        record = {
+            **contract,
+            "flag": flag,
+            "frame": frame.source_name,
+            "candidates": res.alts,
+        }
 
         for s in sinks.get("json", []):
             s.write(record)

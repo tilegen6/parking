@@ -3,6 +3,8 @@ import { NavLink } from "react-router-dom";
 const links = [
   { to: "/", label: "Дашборд", icon: "📊", end: true },
   { to: "/events", label: "События", icon: "🚗" },
+  { to: "/sessions", label: "Сессии", icon: "🅿️" },
+  { to: "/active", label: "На парковке", icon: "🚙" },
   { to: "/cameras", label: "Камеры", icon: "📷" },
 ];
 

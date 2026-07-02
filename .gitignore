@@ -1,0 +1,39 @@
+# ===== Корневой .gitignore монорепозитория =====
+
+# Секреты окружения — НЕ коммитим, шаблон .env.example оставляем
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Docker / локальные данные
+postgres_data/
+.docker-volumes/
+
+# Временные и служебные файлы
+*.tmp
+_mv*.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

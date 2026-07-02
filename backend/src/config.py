@@ -7,7 +7,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        # .env лежит в корне репозитория (рядом с docker-compose).
+        # "../.env" — когда backend запущен локально из папки backend/;
+        # ".env" — запасной вариант. В Docker переменные приходят из окружения.
+        env_file=("../.env", ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     # --- Application ---
@@ -18,7 +23,9 @@ class Settings(BaseSettings):
 
     # --- PostgreSQL ---
     postgres_user: str = "parking_user"
-    postgres_password: str = "parking_password"
+    # Секрет: без значения по умолчанию — обязателен, иначе приложение упадёт
+    # с понятной ошибкой (никаких «паролей» в коде).
+    postgres_password: str
     postgres_db: str = "parking_db"
     postgres_host: str = "postgres"
     postgres_port: int = 5432
@@ -26,11 +33,14 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_host: str = "redis"
     redis_port: int = 6379
+    # Пароль опционален: пусто = без авторизации (для простого локального запуска)
+    redis_password: str = ""
 
     # --- MinIO ---
     minio_endpoint: str = "minio:9000"
     minio_root_user: str = "minio_admin"
-    minio_root_password: str = "minio_password"
+    # Секрет: без значения по умолчанию — обязателен
+    minio_root_password: str
     minio_bucket: str = "parking-photos"
     minio_secure: bool = False
     # Публичный адрес, по которому фронтенд скачивает фото (если отличается от endpoint)
@@ -49,7 +59,9 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
-        return f"redis://{self.redis_host}:{self.redis_port}/0"
+        # Если задан пароль — включаем его в строку подключения (redis://:pass@host)
+        auth = f":{self.redis_password}@" if self.redis_password else ""
+        return f"redis://{auth}{self.redis_host}:{self.redis_port}/0"
 
     @property
     def cors_origins_list(self) -> list[str]:

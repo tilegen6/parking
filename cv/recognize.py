@@ -52,6 +52,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--engine", choices=["template", "easyocr"], default="template")
     p.add_argument(
+        "--detector",
+        choices=["whole", "yolo"],
+        default="whole",
+        help="yolo = детекция пластины перед OCR (для грязных полнокадровых фото)",
+    )
+    p.add_argument("--plate-model", default=None, help="путь к YOLO-модели (.pt)")
+    p.add_argument(
         "--direction", choices=["entry", "exit", "unknown"], default="unknown"
     )
     p.add_argument("--camera-name", default=None)
@@ -66,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = RecognizerConfig(
         engine=args.engine,
+        detector=args.detector,
+        plate_model=args.plate_model,
         direction=args.direction,
         camera_name=args.camera_name,
         confidence_threshold=args.confidence,

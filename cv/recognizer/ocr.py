@@ -100,30 +100,27 @@ class TemplateOcr(PlateOcr):
         return [OcrResult("".join(chars), sum(scores) / len(scores))]
 
 
+def _upscale_small(image: np.ndarray, min_height: int = 64, max_scale: float = 4.0):
+    """Увеличить мелкий кроп пластины — EasyOCR читает крупный текст точнее."""
+    if cv2 is None or image.ndim < 2:
+        return image
+    h = image.shape[0]
+    if h >= min_height or h == 0:
+        return image
+    scale = min(max_scale, min_height / h)
+    return cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+
 # ------------------------------ EasyOcr (реальное) -----------------------------
-
-
-def _ensure_ssl_certs() -> None:
-    """macOS python.org-сборка не ставит корневые сертификаты, из-за чего EasyOCR
-    не может скачать модели (SSL CERTIFICATE_VERIFY_FAILED). Подставляем bundle certifi.
-    """
-    import os
-
-    if os.environ.get("SSL_CERT_FILE"):
-        return
-    try:
-        import certifi
-    except ImportError:
-        return
-    os.environ["SSL_CERT_FILE"] = certifi.where()
-    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 
 class EasyOcr(PlateOcr):
     def __init__(
         self, languages: tuple[str, ...] = ("en",), preprocess: bool = False
     ) -> None:
-        _ensure_ssl_certs()
+        from .util import ensure_ssl_certs
+
+        ensure_ssl_certs()
         try:
             import easyocr
         except ImportError as e:
@@ -140,6 +137,7 @@ class EasyOcr(PlateOcr):
 
     def read(self, image: np.ndarray) -> list[OcrResult]:
         prepared = self._preprocess(image) if self._preprocess else image
+        prepared = _upscale_small(prepared)
         results: list[OcrResult] = []
         for box, text, conf in self._reader.readtext(prepared):
             xs = [int(p[0]) for p in box]

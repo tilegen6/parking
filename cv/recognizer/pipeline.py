@@ -47,6 +47,10 @@ class FrameResult:
 
 
 def make_detector(cfg: RecognizerConfig):
+    if cfg.detector == "yolo":
+        from .detect import YoloPlateDetector
+
+        return YoloPlateDetector(cfg.plate_model)
     from .detect import WholeFrameDetector
 
     return WholeFrameDetector()

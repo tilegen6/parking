@@ -8,6 +8,8 @@ from dataclasses import dataclass
 @dataclass
 class RecognizerConfig:
     engine: str = "template"  # template | easyocr
+    detector: str = "whole"  # whole | yolo (yolo = детекция пластины перед OCR)
+    plate_model: str | None = None  # путь к YOLO-модели (или авто-скачивание)
     direction: str = "unknown"  # entry | exit | unknown
     camera_name: str | None = None
     confidence_threshold: float = 0.85  # ТЗ 2.4

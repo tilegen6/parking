@@ -9,3 +9,5 @@ numpy>=1.26
 opencv-python-headless>=4.9
 # Опциональный тяжёлый OCR (--engine easyocr) тянет torch; ставится по необходимости:
 # pip install easyocr certifi   # certifi нужен для скачивания моделей EasyOCR на macOS
+# Опциональная YOLO-детекция пластины (--detector yolo) для грязных полнокадровых фото:
+# pip install ultralytics       # модель детекции номеров скачивается автоматически

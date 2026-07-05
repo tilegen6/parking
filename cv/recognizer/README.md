@@ -24,7 +24,7 @@ pip install easyocr certifi
 ```bash
 cd cv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q          # 31 тест: нормализация, vote, трекинг, события, качество, связка, e2e
+pytest -q          # 35 тестов: нормализация, vote, трекинг, события, качество, метрики, связка, e2e
 ```
 
 ### 2. Офлайн-демо (синтетические KZ-номера, движок `template`)
@@ -82,6 +82,36 @@ python recognize.py --demo --direction entry --send-to-backend http://localhost:
 
 События уйдут в `POST /api/v1/hikvision/anpr-event` с `source=own-cv-v1` —
 в админке (`http://localhost:5173`) появятся парковочные сессии.
+
+### 5. Оценка точности на датасете
+
+`evaluate.py` прогоняет распознаватель по папке с **размеченными** фото и считает
+метрики: точное совпадение (exact), средняя посимвольная точность (char),
+доля найденных номеров (detection).
+
+```bash
+# скачать публичный датасет с эталонами (фото машин + номера):
+python scripts/fetch_openalpr.py --region eu --n 25 --out datasets/openalpr_eu
+# оценить (whole-frame и yolo — для сравнения):
+python evaluate.py datasets/openalpr_eu --labels-from openalpr --engine easyocr --detector yolo --confidence 0.5
+```
+
+Источник разметки (`--labels-from`):
+- `filename` — номер = имя файла (`123ABC02.jpg`);
+- `openalpr` — `.txt` рядом с фото (`image x y w h НОМЕР`);
+- `csv` — `--labels labels.csv` с колонками `filename,plate`.
+
+**Где взять датасеты с фото номеров:**
+- **openalpr/benchmarks** — реальные фото машин + эталоны (`eu`/`us`/`br`),
+  скачивается скриптом выше. Удобно для проверки пайплайна.
+- **Kaggle** — «Car License Plate Detection», «Large License Plate Dataset»,
+  «ANPR/ALPR» наборы (нужен аккаунт Kaggle).
+- **Roboflow Universe** — десятки ANPR-датасетов, есть экспорт в YOLO-формат.
+- **CCPD** — крупный набор (китайские номера), номер закодирован в имени файла.
+- **Для KZ-номеров** готового публичного набора практически нет — по ТЗ его
+  собирают и размечают сами (Roboflow/CVAT), затем дообучают YOLO/OCR. Для быстрой
+  проверки своих снимков просто кладите их в папку и используйте `--labels-from
+  filename`, назвав файл номером.
 
 ## Архитектура (плагинная)
 

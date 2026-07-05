@@ -58,6 +58,15 @@ class Settings(BaseSettings):
         )
 
     @property
+    def database_url_sync(self) -> str:
+        """Sync-строка подключения для Alembic-миграций."""
+        return (
+            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+
+    @property
     def redis_url(self) -> str:
         # Если задан пароль — включаем его в строку подключения (redis://:pass@host)
         auth = f":{self.redis_password}@" if self.redis_password else ""

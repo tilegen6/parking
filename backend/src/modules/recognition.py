@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import hikvision
@@ -79,7 +79,7 @@ async def _read_event(request: Request) -> hikvision.ParsedEvent:
 async def receive_anpr_event(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict:
+) -> dict[str, object]:
     """Принять событие распознавания от камеры Hikvision и сохранить его."""
     event = await _read_event(request)
     logger.info(
@@ -125,14 +125,16 @@ async def list_events(
     session: Annotated[AsyncSession, Depends(get_session)],
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    plate: str | None = Query(None, description="Поиск по номеру (частичное совпадение)"),
+    plate: str | None = Query(
+        None, description="Поиск по номеру (частичное совпадение)"
+    ),
     direction: str | None = Query(None, description="ENTRY / EXIT / UNKNOWN"),
     camera_id: int | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ) -> PaginatedEvents:
     """Список событий распознавания с пагинацией и фильтрами (для таблицы в админке)."""
-    conditions = []
+    conditions: list[ColumnElement[bool]] = []
     if plate:
         conditions.append(RecognitionEvent.plate_number.ilike(f"%{plate}%"))
     if direction:

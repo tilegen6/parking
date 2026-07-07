@@ -65,7 +65,6 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-
     @property
     def redis_url(self) -> str:
         # Если задан пароль — включаем его в строку подключения (redis://:pass@host)
@@ -79,7 +78,9 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Обязательные поля (пароли) приходят из окружения/.env, а не из аргументов —
+    # mypy об этом не знает, поэтому глушим его call-arg для этого вызова.
+    return Settings()  # type: ignore[call-arg]
 
 
 settings = get_settings()

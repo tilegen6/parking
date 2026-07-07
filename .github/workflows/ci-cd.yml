@@ -5,15 +5,13 @@ on:
     branches:
       - main
       - 'backend/**'
-      - 'dev-ops/**'
-    paths:
-      - 'backend/**'
+      - 'frontend/**'
+      - 'cv/**'
+      - 'devops/**'
 
   pull_request:
     branches:
       - main
-    paths:
-      - 'backend/**'
 
 jobs:
   lint-and-test:
@@ -25,7 +23,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.14.5'
+          python-version: '3.14'
           cache: 'pip'
           cache-dependency-path: 'backend/requirements.txt'
 
@@ -66,6 +64,5 @@ jobs:
 
             git pull origin main
 
-            cd backend
-
-            docker-compose up -d --build
+            # docker-compose.yml теперь в корне репозитория
+            docker compose up -d --build

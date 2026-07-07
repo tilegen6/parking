@@ -1,8 +1,8 @@
 """Точка входа FastAPI-приложения Smart Parking ANPR."""
 
 import logging
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,7 +61,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 @app.get("/health", tags=["system"])
-async def health() -> dict:
+async def health() -> dict[str, object]:
     """Health check для DevOps / Nginx / Docker."""
     db_ok = True
     try:

@@ -1,6 +1,6 @@
 """API управления камерами."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -54,7 +54,7 @@ dashboard_router = APIRouter(prefix="/api/v1", tags=["dashboard"])
 @dashboard_router.get("/dashboard/stats")
 async def dashboard_stats(
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict:
+) -> dict[str, object]:
     """Сводка для главной страницы админки."""
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -69,7 +69,9 @@ async def dashboard_stats(
 
     last_event = (
         await session.execute(
-            select(RecognitionEvent).order_by(RecognitionEvent.event_time.desc()).limit(1)
+            select(RecognitionEvent)
+            .order_by(RecognitionEvent.event_time.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
 

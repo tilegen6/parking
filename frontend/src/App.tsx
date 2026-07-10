@@ -4,6 +4,7 @@ import { ActiveCarsPage } from "./pages/ActiveCarsPage";
 import { CamerasPage } from "./pages/CamerasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
+import { RecognizePage } from "./pages/RecognizePage";
 import { SessionDetailPage } from "./pages/SessionDetailPage";
 import { SessionsPage } from "./pages/SessionsPage";
 
@@ -17,6 +18,7 @@ export default function App() {
         <Route path="sessions/:id" element={<SessionDetailPage />} />
         <Route path="active" element={<ActiveCarsPage />} />
         <Route path="cameras" element={<CamerasPage />} />
+        <Route path="recognize" element={<RecognizePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

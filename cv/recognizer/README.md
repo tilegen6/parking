@@ -24,7 +24,7 @@ pip install easyocr certifi
 ```bash
 cd cv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-pytest -q          # 35 тестов: нормализация, vote, трекинг, события, качество, метрики, связка, e2e
+pytest -q          # 38 тестов: нормализация, vote, трекинг, события, качество, метрики, сервис, e2e
 ```
 
 ### 2. Офлайн-демо (синтетические KZ-номера, движок `template`)
@@ -112,6 +112,22 @@ python evaluate.py datasets/openalpr_eu --labels-from openalpr --engine easyocr 
   собирают и размечают сами (Roboflow/CVAT), затем дообучают YOLO/OCR. Для быстрой
   проверки своих снимков просто кладите их в папку и используйте `--labels-from
   filename`, назвав файл номером.
+
+### 6. Админ-страница «Тест распознавания» (загрузил фото → номер)
+
+CV-сервис (`cv/service.py`) — HTTP-обёртка над распознавателем для админки.
+
+```bash
+# 1) поднять CV-сервис (в cv venv, где стоят easyocr/ultralytics):
+python cv/service.py                    # http://localhost:8090
+# 2) фронт (npm run dev / docker compose) -> открыть страницу «Тест CV» (/recognize)
+#    загрузить фото -> увидеть номер + рамку
+```
+
+Эндпоинты: `GET /health`, `POST /recognize` (multipart `file`) → JSON с номером,
+confidence, флагом, кандидатами и размеченным фото (base64). Движок/детектор — из env
+(`CV_ENGINE`, `CV_DETECTOR`, `CV_CONFIDENCE`; дефолт `easyocr`+`yolo`). Адрес сервиса на
+фронте — `VITE_CV_URL` (дефолт `http://localhost:8090`).
 
 ## Архитектура (плагинная)
 

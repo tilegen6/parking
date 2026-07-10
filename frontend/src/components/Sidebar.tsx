@@ -6,6 +6,7 @@ const links = [
   { to: "/sessions", label: "Сессии", icon: "🅿️" },
   { to: "/active", label: "На парковке", icon: "🚙" },
   { to: "/cameras", label: "Камеры", icon: "📷" },
+  { to: "/recognize", label: "Тест CV", icon: "🔍" },
 ];
 
 export function Sidebar() {

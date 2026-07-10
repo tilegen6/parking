@@ -74,18 +74,23 @@ class Pipeline:
         self.detector = detector or make_detector(cfg)
         self.ocr = ocr or make_ocr(cfg)
 
-    def _best(self, ocr_results) -> FrameResult | None:
-        """Выбрать кандидата: валидный формат -> похоже-на-номер -> confidence."""
+    def _best(self, candidates) -> FrameResult | None:
+        """Выбрать кандидата: валидный формат -> похоже-на-номер -> confidence.
+
+        candidates: список (OcrResult, region_box). Для рамки берём абсолютный бокс —
+        region_box (бокс региона детектора в координатах кадра), иначе бокс OCR.
+        """
         scored = []
-        for r in ocr_results:
+        for r, region_box in candidates:
             norm = normalize_plate(r.text)
+            box = region_box if region_box is not None else r.box
             scored.append(
                 (
                     norm.is_valid,
                     plate_likeness(r.text),
                     r.confidence,
                     norm.normalized,
-                    r.box,
+                    box,
                 )
             )
         if not scored:
@@ -98,10 +103,11 @@ class Pipeline:
         )
 
     def process_frame(self, image) -> FrameResult | None:
-        results = []
+        candidates = []
         for region in self.detector.detect(image):
-            results.extend(self.ocr.read(region.image))
-        return self._best(results)
+            for r in self.ocr.read(region.image):
+                candidates.append((r, region.box))
+        return self._best(candidates)
 
     def run_images(self, source, sinks: dict) -> list[dict]:
         events = []

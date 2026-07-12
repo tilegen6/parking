@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from src.config import settings
 from src.database import engine
-from src.modules import camera, recognition
+from src.modules import camera, recognition, session
 from src.storage import storage
 
 logging.basicConfig(
@@ -75,3 +75,4 @@ async def health() -> dict[str, object]:
 app.include_router(recognition.router)
 app.include_router(camera.router)
 app.include_router(camera.dashboard_router)
+app.include_router(session.router)

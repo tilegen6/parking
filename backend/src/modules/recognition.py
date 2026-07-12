@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src import hikvision
 from src.database import get_session
 from src.models import Camera, RecognitionEvent
+from src.modules import session as session_service
 from src.schemas import PaginatedEvents, RecognitionEventOut
 from src.storage import storage
 
@@ -117,7 +118,16 @@ async def receive_anpr_event(
     session.add(record)
     await session.flush()
 
-    return {"status": "ok", "id": record.id, "plate_number": record.plate_number}
+    # Применить событие к парковочным сессиям (ENTRY/EXIT/дедуп/аномалии)
+    result = await session_service.handle_recognition_event(session, record)
+
+    return {
+        "status": "ok",
+        "id": record.id,
+        "plate_number": record.plate_number,
+        "session_action": result.action,
+        "session_id": result.session_id,
+    }
 
 
 @router.get("/recognition/events", response_model=PaginatedEvents)

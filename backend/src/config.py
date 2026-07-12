@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # Публичный адрес, по которому фронтенд скачивает фото (если отличается от endpoint)
     minio_public_url: str = "http://localhost:9000"
 
+    # --- Parking sessions (ТЗ §2.4, §6.2) ---
+    # Порог уверенности: ниже — событие low_confidence, сессия не создаётся
+    recognition_min_confidence: float = 0.85
+    # Окно дедупликации повторных событий одного номера, секунд
+    session_dedup_window_seconds: int = 30
+
     # --- CORS ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 

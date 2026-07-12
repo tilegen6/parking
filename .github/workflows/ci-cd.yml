@@ -1,33 +1,65 @@
 name: CI/CD Pipeline
 
+# Один общий пайплайн для монорепо. Работает на всех ветках:
+#   main, backend, cv, devops, frontend.
+# Какие job'ы запускать — решает фильтр путей (dorny/paths-filter),
+# поэтому ветка без папки frontend/ просто пропустит frontend-job.
 on:
   push:
-    branches:
-      - main
-      - 'backend/**'
-      - 'frontend/**'
-      - 'cv/**'
-      - 'devops/**'
+    branches: ["**"]
   pull_request:
-    branches:
-      - main
+    branches: [main]
+
+# Отменяем устаревшие прогоны на той же ветке/PR, чтобы не жечь раннеры
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/smart-parking
 
-# ─────────────────────────────────────────────
-# 1. BACKEND
-# ─────────────────────────────────────────────
+permissions:
+  contents: read
+
 jobs:
-  backend-lint-and-test:
-    name: "Backend — Lint & Test"
+  # ─────────────────────────────────────────────
+  # 0. DETECT CHANGES — что менялось в этом push/PR
+  # ─────────────────────────────────────────────
+  changes:
+    name: "Detect changed areas"
     runs-on: ubuntu-latest
-    # Запускаем только при изменениях в backend/ или на main
-    if: |
-      github.ref == 'refs/heads/main' ||
-      contains(github.event.head_commit.modified, 'backend/') ||
-      startsWith(github.head_ref, 'backend/')
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      cv: ${{ steps.filter.outputs.cv }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/ci-cd.yml'
+            cv:
+              - 'cv/**'
+              - '.github/workflows/ci-cd.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/ci-cd.yml'
+
+  # ─────────────────────────────────────────────
+  # 1. BACKEND — FastAPI (ruff + mypy + pytest)
+  # ─────────────────────────────────────────────
+  backend:
+    name: "Backend — Lint & Test"
+    needs: changes
+    if: ${{ needs.changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
 
     services:
       postgres:
@@ -59,7 +91,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-          cache-dependency-path: 'backend/requirements.txt'
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -74,63 +106,23 @@ jobs:
 
       - name: Mypy — type checker
         run: mypy backend/src/
+        working-directory: backend
 
       - name: Pytest
+        working-directory: backend
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
-        run: |
-          cd backend
-          pytest --tb=short -q || echo "No tests yet"
+        run: pytest --tb=short -q
 
   # ─────────────────────────────────────────────
-  # 2. FRONTEND (User + Admin в монорепо)
+  # 2. CV SERVICE — интеграционная лаборатория ANPR
   # ─────────────────────────────────────────────
-  frontend-lint-and-build:
-    name: "Frontend — Lint & Build"
-    runs-on: ubuntu-latest
-    if: |
-      github.ref == 'refs/heads/main' ||
-      contains(github.event.head_commit.modified, 'frontend/') ||
-      startsWith(github.head_ref, 'frontend/')
-
-    strategy:
-      matrix:
-        app: [user, admin]   # папки frontend/user/ и frontend/admin/
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/${{ matrix.app }}/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci --prefix frontend/${{ matrix.app }}
-
-      - name: ESLint
-        run: npm run lint --prefix frontend/${{ matrix.app }}
-
-      - name: TypeScript check
-        run: npm run typecheck --prefix frontend/${{ matrix.app }}
-        # Если скрипта нет — замените на: npx tsc --noEmit
-        continue-on-error: false
-
-      - name: Build
-        run: npm run build --prefix frontend/${{ matrix.app }}
-
-  # ─────────────────────────────────────────────
-  # 3. CV SERVICE
-  # ─────────────────────────────────────────────
-  cv-lint-and-test:
+  cv:
     name: "CV Service — Lint & Test"
+    needs: changes
+    if: ${{ needs.changes.outputs.cv == 'true' }}
     runs-on: ubuntu-latest
-    if: |
-      github.ref == 'refs/heads/main' ||
-      contains(github.event.head_commit.modified, 'cv/') ||
-      startsWith(github.head_ref, 'cv/')
 
     steps:
       - uses: actions/checkout@v4
@@ -139,13 +131,12 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-          cache-dependency-path: 'cv/requirements.txt'
+          cache-dependency-path: cv/requirements-dev.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Ultralytics тяжёлый — устанавливаем без GPU-зависимостей
-          pip install -r cv/requirements.txt
+          pip install -r cv/requirements.txt -r cv/requirements-dev.txt
 
       - name: Ruff — linter
         run: ruff check cv/
@@ -154,37 +145,78 @@ jobs:
         run: ruff format --check cv/
 
       - name: Mypy — type checker
-        run: mypy cv/src/ || echo "Mypy not configured yet"
+        # CV — лаборатория, типизация пока не строгая → не блокируем
+        continue-on-error: true
+        run: mypy cv/
 
       - name: Pytest
+        working-directory: cv
         run: |
-          cd cv
-          pytest --tb=short -q || echo "No tests yet"
+          if ls tests/test_*.py >/dev/null 2>&1; then
+            pytest --tb=short -q
+          else
+            echo "No CV tests yet — skipping"
+          fi
+
+  # ─────────────────────────────────────────────
+  # 3. FRONTEND — React + Vite + TS (eslint + tsc + build)
+  # ─────────────────────────────────────────────
+  frontend:
+    name: "Frontend — Lint & Build"
+    needs: changes
+    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: ESLint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: TypeScript check
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
 
   # ─────────────────────────────────────────────
   # 4. BUILD & PUSH DOCKER IMAGES (только main)
   # ─────────────────────────────────────────────
   build-and-push:
-    name: "Docker — Build & Push"
-    needs: [backend-lint-and-test, frontend-lint-and-build, cv-lint-and-test]
+    name: "Docker — Build & Push (${{ matrix.service }})"
+    needs: [backend, cv, frontend]
+    # Запускаем на push в main, даже если часть job'ов выше была пропущена
+    # (paths-filter мог не активировать неизменённые сервисы).
+    if: ${{ !cancelled() && !failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     permissions:
       contents: read
-      packages: write   # нужно для ghcr.io
+      packages: write   # нужно для push в ghcr.io
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - service: backend
             context: ./backend
             image: backend
-          - service: cv
-            context: ./cv
-            image: cv
-          # Frontend собирается в статику и отдаётся Nginx —
-          # добавьте сюда, если у вас есть отдельный Dockerfile для фронта
+          - service: frontend
+            context: ./frontend
+            image: frontend
 
     steps:
       - uses: actions/checkout@v4
@@ -208,25 +240,24 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest
 
-      - name: Build & Push — ${{ matrix.service }}
+      - name: Build & Push
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Кешируем слои в ghcr.io, чтобы повторные билды были быстрее
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
 
   # ─────────────────────────────────────────────
-  # 5. DEPLOY + HEALTH CHECK
+  # 5. DEPLOY + HEALTH CHECK (только main)
   # ─────────────────────────────────────────────
   deploy:
     name: "Deploy to Server"
     needs: build-and-push
+    if: ${{ !cancelled() && !failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
       - name: Deploy via SSH
@@ -249,14 +280,13 @@ jobs:
             echo "==> Pull new images"
             docker compose pull
 
-            echo "==> Rolling restart (zero-downtime для stateless-сервисов)"
+            echo "==> Rolling restart"
             docker compose up -d --remove-orphans
 
             echo "==> Clean up old images"
             docker image prune -f
 
       - name: Health Check
-        # Даём сервисам 30 секунд подняться, затем проверяем эндпоинты
         run: |
           sleep 30
 
@@ -274,13 +304,10 @@ jobs:
             fi
           }
 
-          # Замените на реальные URL ваших сервисов
           check "Backend API"   "http://${{ secrets.SERVER_HOST }}/api/health"
-          check "CV Service"    "http://${{ secrets.SERVER_HOST }}/cv/health"
-          check "Frontend User" "http://${{ secrets.SERVER_HOST }}/"
+          check "Frontend"      "http://${{ secrets.SERVER_HOST }}/"
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "::error::Деплой или health-check упал. Проверьте логи: docker compose logs --tail=50"
-          # Сюда можно добавить Telegram / Slack уведомление
+          echo "::error::Деплой или health-check упал. Логи: docker compose logs --tail=50"

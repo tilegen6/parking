@@ -1,0 +1,11 @@
+# Blackbox exporter: HTTP-пробы доступности сервисов.
+modules:
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      preferred_ip_protocol: ip4
+      fail_if_not_ssl: false
+      # пустой список = считать успехом любой 2xx
+      valid_status_codes: []

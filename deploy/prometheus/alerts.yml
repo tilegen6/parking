@@ -1,0 +1,82 @@
+# Правила алертов. Срабатывают при падении сервисов и аномальной нагрузке.
+groups:
+  - name: service-availability
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Цель {{ $labels.job }} недоступна ({{ $labels.instance }})"
+          description: "Prometheus не может собрать метрики с {{ $labels.instance }} более 1 минуты."
+
+      - alert: ServiceProbeFailed
+        expr: probe_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP-сервис недоступен: {{ $labels.instance }}"
+          description: "Blackbox-проба до {{ $labels.instance }} не проходит более 1 минуты."
+
+  - name: containers
+    rules:
+      - alert: ContainerDown
+        expr: time() - container_last_seen{name=~"parking_.+"} > 60
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Контейнер упал: {{ $labels.name }}"
+          description: "cAdvisor не видит контейнер {{ $labels.name }} более 60 секунд."
+
+      - alert: ContainerHighCpu
+        expr: sum(rate(container_cpu_usage_seconds_total{name=~"parking_.+"}[5m])) by (name) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокая нагрузка CPU: {{ $labels.name }}"
+          description: "Контейнер {{ $labels.name }} потребляет >90% CPU более 5 минут."
+
+      - alert: ContainerHighMemory
+        expr: |
+          container_memory_usage_bytes{name=~"parking_.+"}
+          / container_spec_memory_limit_bytes{name=~"parking_.+"} > 0.9
+          and container_spec_memory_limit_bytes{name=~"parking_.+"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Высокое потребление памяти: {{ $labels.name }}"
+          description: "Контейнер {{ $labels.name }} использует >90% лимита памяти более 5 минут."
+
+  - name: datastores
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL недоступен"
+          description: "postgres-exporter сообщает pg_up=0 более 1 минуты."
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis недоступен"
+          description: "redis-exporter сообщает redis_up=0 более 1 минуты."
+
+      - alert: PostgresTooManyConnections
+        expr: sum(pg_stat_activity_count) by (instance) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Много соединений с PostgreSQL"
+          description: "Открыто >80 соединений более 5 минут — возможна утечка пула."

@@ -244,6 +244,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Lowercase image prefix
+        # GHCR/Docker требуют имя репозитория в нижнем регистре, а owner
+        # может содержать заглавные буквы (например CodeANPR) — приводим
+        # к lowercase, иначе buildx падает на cache-from/cache-to.
+        run: echo "IMAGE_PREFIX=ghcr.io/${OWNER,,}/smart-parking" >> "$GITHUB_ENV"
+        env:
+          OWNER: ${{ github.repository_owner }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -262,65 +270,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
-
-  # ─────────────────────────────────────────────
-  # 5. DEPLOY + HEALTH CHECK (только main)
-  # ─────────────────────────────────────────────
-  deploy:
-    name: "Deploy to Server"
-    needs: build-and-push
-    if: ${{ !cancelled() && !failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SERVER_PORT || 22 }}
-          script: |
-            set -e
-            cd /home/${{ secrets.SERVER_USER }}/smart-parking
-
-            echo "==> Pull latest code"
-            git pull origin main
-
-            echo "==> Log in to GHCR"
-            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-
-            echo "==> Pull new images"
-            docker compose pull
-
-            echo "==> Rolling restart"
-            docker compose up -d --remove-orphans
-
-            echo "==> Clean up old images"
-            docker image prune -f
-
-      - name: Health Check
-        run: |
-          sleep 30
-
-          check() {
-            local name=$1
-            local url=$2
-            local status
-
-            status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url")
-            if [ "$status" -ge 200 ] && [ "$status" -lt 400 ]; then
-              echo "✅  $name — HTTP $status"
-            else
-              echo "❌  $name — HTTP $status"
-              exit 1
-            fi
-          }
-
-          check "Backend API"   "http://${{ secrets.SERVER_HOST }}/api/health"
-          check "Frontend"      "http://${{ secrets.SERVER_HOST }}/"
-
-      - name: Notify on failure
-        if: failure()
-        run: |
-          echo "::error::Деплой или health-check упал. Логи: docker compose logs --tail=50"

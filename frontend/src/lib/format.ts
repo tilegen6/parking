@@ -75,3 +75,19 @@ export function formatAmount(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
   return `${value.toLocaleString("ru-RU")} ₸`;
 }
+
+// Относительное время: «только что», «5 мин назад», «3 ч назад», «2 д назад».
+export function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 0) return "—";
+  if (sec < 10) return "только что";
+  if (sec < 60) return `${sec} сек назад`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} мин назад`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} ч назад`;
+  return `${Math.floor(hr / 24)} д назад`;
+}

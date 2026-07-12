@@ -1,13 +1,27 @@
-# Полный стек умной парковки: backend + frontend + Postgres + Redis + MinIO.
-# Файл живёт в корне репозитория и оркестрирует все сервисы.
+# Полный стек умной парковки: backend + frontend + Postgres + Redis + MinIO,
+# плюс ops-стек (логи, метрики, алерты, бэкапы) под docker-compose profiles.
+#
+# Запуск приложения:           docker compose up -d
+# + мониторинг/логи/алерты:     docker compose --profile monitoring up -d
+# + бэкапы и очистка файлов:    docker compose --profile backup up -d
+# Всё сразу:                    docker compose --profile monitoring --profile backup up -d
+#
 # Секреты НЕ хранятся здесь: пароли берутся из .env (рядом). Для обязательных
 # секретов используем ${VAR:?...} — Compose упадёт с понятной ошибкой, если не заданы.
+
+# Единые настройки ротации логов docker (очистка старых логов на уровне демона)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   postgres:
     image: postgres:16-alpine
     container_name: parking_postgres
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-parking_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD не задан в .env}
@@ -27,6 +41,7 @@ services:
     image: redis:7-alpine
     container_name: parking_redis
     restart: unless-stopped
+    logging: *default-logging
     # Пароль опционален: если REDIS_PASSWORD пуст — Redis стартует без авторизации
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-}"]
     ports:
@@ -43,10 +58,13 @@ services:
     image: minio/minio:latest
     container_name: parking_minio
     restart: unless-stopped
+    logging: *default-logging
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD не задан в .env}
+      # Разрешаем Prometheus собирать метрики без токена
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     ports:
       - "9000:9000"   # S3 API (сюда ходит backend)
       - "9001:9001"   # Веб-консоль (http://localhost:9001)
@@ -63,6 +81,7 @@ services:
     build: ./backend
     container_name: parking_backend
     restart: unless-stopped
+    logging: *default-logging
     env_file:
       - .env
     environment:
@@ -89,6 +108,7 @@ services:
     build: ./frontend
     container_name: parking_frontend
     restart: unless-stopped
+    logging: *default-logging
     environment:
       # Браузер обращается к backend по localhost (а не по имени docker-сети)
       VITE_API_URL: http://localhost:8000
@@ -98,7 +118,240 @@ services:
       backend:
         condition: service_healthy
 
+  # ═══════════════════════════════════════════════════════════════
+  # ЛОГИРОВАНИЕ: Loki (хранилище) + Promtail (сбор) + Grafana (UI)
+  # ═══════════════════════════════════════════════════════════════
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: parking_loki
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./deploy/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3100/ready | grep -q ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: parking_promtail
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./deploy/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail_positions:/tmp
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: parking_grafana
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD не задан в .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+      - loki
+
+  # ═══════════════════════════════════════════════════════════════
+  # МЕТРИКИ: Prometheus + экспортеры (контейнеры, Postgres, Redis, MinIO)
+  # ═══════════════════════════════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: parking_prometheus
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: parking_cadvisor
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: parking_node_exporter
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: parking_postgres_exporter
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-parking_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-parking_db}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0
+    container_name: parking_redis_exporter
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: parking_blackbox
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    command:
+      - "--config.file=/etc/blackbox/blackbox.yml"
+    volumes:
+      - ./deploy/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+
+  # ═══════════════════════════════════════════════════════════════
+  # АЛЕРТЫ: Alertmanager (+ init-контейнер подставляет токен из .env)
+  # ═══════════════════════════════════════════════════════════════
+  alertmanager-config:
+    image: alpine:3.20
+    container_name: parking_alertmanager_config
+    profiles: ["monitoring"]
+    environment:
+      ALERT_TELEGRAM_BOT_TOKEN: ${ALERT_TELEGRAM_BOT_TOKEN:-changeme}
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:-0}
+    volumes:
+      - ./deploy/alertmanager/alertmanager.yml.tmpl:/tmpl/alertmanager.yml.tmpl:ro
+      - alertmanager_config:/output
+    command:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache gettext >/dev/null
+        envsubst < /tmpl/alertmanager.yml.tmpl > /output/alertmanager.yml
+        echo "alertmanager.yml сгенерирован"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: parking_alertmanager
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    logging: *default-logging
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - alertmanager_config:/etc/alertmanager
+      - alertmanager_data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    depends_on:
+      alertmanager-config:
+        condition: service_completed_successfully
+
+  # ═══════════════════════════════════════════════════════════════
+  # БЭКАПЫ И ОЧИСТКА СТАРЫХ ФАЙЛОВ
+  # ═══════════════════════════════════════════════════════════════
+  # Автоматический бэкап PostgreSQL по расписанию + ретеншен (удаление старых)
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: parking_postgres_backup
+    profiles: ["backup"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-parking_db}
+      POSTGRES_USER: ${POSTGRES_USER:-parking_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: ${BACKUP_SCHEDULE:-@daily}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+      BACKUP_KEEP_WEEKS: ${BACKUP_KEEP_WEEKS:-4}
+      BACKUP_KEEP_MONTHS: ${BACKUP_KEEP_MONTHS:-6}
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - postgres_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Настройка lifecycle MinIO: авто-удаление снимков старше N дней
+  minio-lifecycle:
+    image: minio/mc:latest
+    container_name: parking_minio_lifecycle
+    profiles: ["backup"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-parking-plates}
+      MINIO_OBJECT_RETENTION_DAYS: ${MINIO_OBJECT_RETENTION_DAYS:-30}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do
+          echo "ждём minio..."; sleep 3;
+        done
+        mc mb --ignore-existing local/"$$MINIO_BUCKET"
+        mc ilm rule add --expire-days "$$MINIO_OBJECT_RETENTION_DAYS" local/"$$MINIO_BUCKET" \
+          || mc ilm add --expiry-days "$$MINIO_OBJECT_RETENTION_DAYS" local/"$$MINIO_BUCKET" \
+          || echo "lifecycle уже настроен или версия mc отличается"
+        echo "MinIO lifecycle: объекты удаляются через $$MINIO_OBJECT_RETENTION_DAYS дней"
+    depends_on:
+      minio:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  # ops-стек
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  promtail_positions:
+  alertmanager_data:
+  alertmanager_config:
+  postgres_backups:

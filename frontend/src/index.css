@@ -9,11 +9,42 @@ body,
 }
 
 body {
-  @apply bg-slate-100 text-slate-800 antialiased;
+  @apply bg-paper font-sans text-ink antialiased;
+  /* Едва заметная сетка — атмосфера диспетчерского пульта, не отвлекает */
+  background-image: radial-gradient(rgba(11, 27, 43, 0.04) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
 }
 
 @layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+
   .input {
-    @apply rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-brand focus:ring-1 focus:ring-brand;
+    @apply rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition focus:border-sky focus:ring-2 focus:ring-sky/20;
+  }
+
+  /* Эфирная подпись-метка над заголовками: трекинг + цвет sky */
+  .eyebrow {
+    @apply font-mono text-[11px] font-bold uppercase tracking-[0.22em] text-sky-700;
+  }
+}
+
+/* Уважаем prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -117,11 +117,18 @@ python evaluate.py datasets/openalpr_eu --labels-from openalpr --engine easyocr 
 
 CV-сервис (`cv/service.py`) — HTTP-обёртка над распознавателем для админки.
 
+**Всё одной командой через docker** (app + CV-сервис; первый build тяжёлый — torch):
+
 ```bash
-# 1) поднять CV-сервис (в cv venv, где стоят easyocr/ultralytics):
+docker compose --profile cv up -d --build
+# backend :8000 · frontend :5173 · CV-сервис :8090 — открыть /recognize, загрузить фото
+```
+
+**Или локально** (CV в cv venv, остальное как удобно):
+
+```bash
 python cv/service.py                    # http://localhost:8090
-# 2) фронт (npm run dev / docker compose) -> открыть страницу «Тест CV» (/recognize)
-#    загрузить фото -> увидеть номер + рамку
+# фронт: npm run dev / docker compose -> страница «Тест CV» (/recognize)
 ```
 
 Эндпоинты: `GET /health`, `POST /recognize` (multipart `file`) → JSON с номером,

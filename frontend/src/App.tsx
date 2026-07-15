@@ -7,6 +7,7 @@ import { EventsPage } from "./pages/EventsPage";
 import { RecognizePage } from "./pages/RecognizePage";
 import { SessionDetailPage } from "./pages/SessionDetailPage";
 import { SessionsPage } from "./pages/SessionsPage";
+import { SimulatorPage } from "./pages/SimulatorPage";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="active" element={<ActiveCarsPage />} />
         <Route path="cameras" element={<CamerasPage />} />
         <Route path="recognize" element={<RecognizePage />} />
+        <Route path="simulator" element={<SimulatorPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

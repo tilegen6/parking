@@ -86,7 +86,7 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
         return {
             "plate_number": plate,
             "confidence": round(res.confidence, 3) if res else None,
-            "flag": "ok" if (is_valid and not below) else "low_confidence",
+            "flag": "low_confidence" if below else "ok",
             "is_valid": is_valid,
             "candidates": res.alts if res else [],
             "annotated_image": _annotate(img, plate, res.box if res else None),

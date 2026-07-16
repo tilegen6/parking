@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useEvents } from "../api/hooks";
 import { PhotoModal } from "../components/PhotoModal";
+import { PlateReadout } from "../components/PlateReadout";
+import { StatTile } from "../components/StatTile";
 import { Thumb } from "../components/Thumb";
 import type { Direction, EventsFilters } from "../api/types";
 import {
@@ -33,17 +35,49 @@ export function EventsPage() {
 
   const resetToFirstPage = () => setPage(1);
 
+  const hasFilters = Boolean(plate || direction || dateFrom || dateTo);
+  const shown = data?.items.length ?? 0;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-slate-800">События распознавания</h2>
+    <div className="space-y-6">
+      {/* Заголовок */}
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <div className="eyebrow">Журнал</div>
+          <h2 className="font-display text-xl font-semibold text-ink">
+            События распознавания
+          </h2>
+          <p className="mt-1 text-sm text-ink-500/70">
+            Каждый проезд через КПП — с номером, направлением и кадрами камеры.
+          </p>
+        </div>
         {isFetching && !isLoading && (
-          <span className="text-xs text-slate-400">обновление…</span>
+          <span className="font-mono text-xs text-ink-500/50">обновление…</span>
         )}
       </div>
 
+      {/* KPI */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatTile
+          eyebrow="Всего событий"
+          value={data ? data.total : "…"}
+          hint={hasFilters ? "по текущему фильтру" : "за всё время"}
+        />
+        <StatTile
+          eyebrow="Страница"
+          value={data ? data.page : "…"}
+          unit={data ? `/ ${data.pages}` : undefined}
+          hint={`по ${PAGE_LIMIT} на страницу`}
+        />
+        <StatTile
+          eyebrow="Показано"
+          value={isLoading ? "…" : shown}
+          hint="строк на этой странице"
+        />
+      </div>
+
       {/* Фильтры */}
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
+      <div className="card flex flex-wrap items-end gap-3 p-4">
         <Field label="Номер">
           <input
             value={plate}
@@ -52,7 +86,7 @@ export function EventsPage() {
               resetToFirstPage();
             }}
             placeholder="777ABC"
-            className="input"
+            className="input font-mono uppercase tracking-wide"
           />
         </Field>
         <Field label="Направление">
@@ -92,7 +126,7 @@ export function EventsPage() {
             className="input"
           />
         </Field>
-        {(plate || direction || dateFrom || dateTo) && (
+        {hasFilters && (
           <button
             onClick={() => {
               setPlate("");
@@ -101,7 +135,7 @@ export function EventsPage() {
               setDateTo("");
               resetToFirstPage();
             }}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-600 transition hover:border-sky"
           >
             Сбросить
           </button>
@@ -109,9 +143,9 @@ export function EventsPage() {
       </div>
 
       {/* Таблица */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="card overflow-hidden">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <thead className="bg-paper text-xs uppercase tracking-wide text-ink-500/60">
             <tr>
               <th className="px-4 py-3">Номер</th>
               <th className="px-4 py-3">Направление</th>
@@ -122,10 +156,10 @@ export function EventsPage() {
               <th className="px-4 py-3">Номер (фото)</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {isLoading && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
                   Загрузка…
                 </td>
               </tr>
@@ -141,16 +175,16 @@ export function EventsPage() {
 
             {!isLoading && !isError && data?.items.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
                   Событий пока нет
                 </td>
               </tr>
             )}
 
             {data?.items.map((ev) => (
-              <tr key={ev.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 font-mono font-semibold tracking-wider">
-                  {ev.plate_number ?? "—"}
+              <tr key={ev.id} className="animate-fade-up hover:bg-paper">
+                <td className="px-4 py-3">
+                  <PlateReadout plate={ev.plate_number} size="sm" />
                 </td>
                 <td className="px-4 py-3">
                   <span
@@ -161,11 +195,11 @@ export function EventsPage() {
                     {directionLabel[ev.direction]}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-slate-600">{ev.camera_name ?? "—"}</td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3 text-ink-500/70">{ev.camera_name ?? "—"}</td>
+                <td className="px-4 py-3 font-mono text-ink-500/70">
                   {formatDateTime(ev.event_time)}
                 </td>
-                <td className="px-4 py-3 text-slate-600">
+                <td className="px-4 py-3 font-mono text-ink-500/70">
                   {formatConfidence(ev.confidence)}
                 </td>
                 <td className="px-4 py-3">
@@ -182,22 +216,22 @@ export function EventsPage() {
 
       {/* Пагинация */}
       {data && data.pages > 1 && (
-        <div className="flex items-center justify-between text-sm text-slate-600">
-          <span>
+        <div className="flex items-center justify-between text-sm text-ink-500/70">
+          <span className="font-mono">
             Всего: {data.total} · стр. {data.page} из {data.pages}
           </span>
           <div className="flex gap-2">
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+              className="rounded-lg border border-line px-3 py-1.5 text-ink-600 transition hover:border-sky disabled:opacity-40 disabled:hover:border-line"
             >
               ← Назад
             </button>
             <button
               disabled={page >= data.pages}
               onClick={() => setPage((p) => p + 1)}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+              className="rounded-lg border border-line px-3 py-1.5 text-ink-600 transition hover:border-sky disabled:opacity-40 disabled:hover:border-line"
             >
               Вперёд →
             </button>
@@ -212,7 +246,7 @@ export function EventsPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-slate-500">
+    <label className="flex flex-col gap-1 text-xs font-medium text-ink-500/70">
       {label}
       {children}
     </label>

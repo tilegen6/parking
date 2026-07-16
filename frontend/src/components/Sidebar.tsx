@@ -7,6 +7,7 @@ const links = [
   { to: "/active", label: "На парковке", icon: "▣" },
   { to: "/cameras", label: "Камеры", icon: "▷" },
   { to: "/recognize", label: "Тест CV", icon: "✦" },
+  { to: "/simulator", label: "Симулятор", icon: "⚡" },
 ];
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {

@@ -139,7 +139,10 @@ class EasyOcr(PlateOcr):
         prepared = self._preprocess(image) if self._preprocess else image
         prepared = _upscale_small(prepared)
         results: list[OcrResult] = []
-        for box, text, conf in self._reader.readtext(prepared):
+        # allowlist (только символы номеров) повышает точность и confidence на пластинах
+        for box, text, conf in self._reader.readtext(
+            prepared, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        ):
             xs = [int(p[0]) for p in box]
             ys = [int(p[1]) for p in box]
             results.append(

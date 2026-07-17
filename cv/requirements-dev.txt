@@ -1,0 +1,5 @@
+# Dev/CI tooling for the CV service (kept separate from runtime requirements.txt)
+ruff==0.15.16
+mypy==2.1.0
+pytest==9.0.3
+httpx==0.28.1

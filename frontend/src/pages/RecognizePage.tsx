@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { recognizePlate, type RecognizeResult } from "../api/cv";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
@@ -17,12 +17,11 @@ export function RecognizePage() {
     setError(null);
   };
 
-  const run = async () => {
-    if (!file) return;
+  const recognize = useCallback(async (f: File) => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await recognizePlate(file));
+      setResult(await recognizePlate(f));
     } catch (e) {
       setError(
         e instanceof Error
@@ -32,7 +31,33 @@ export function RecognizePage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const run = () => {
+    if (file) recognize(file);
   };
+
+  // Вставка фото из буфера обмена (Ctrl+V / Cmd+V) — где угодно на странице
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of Array.from(items)) {
+        if (it.type.startsWith("image/")) {
+          const f = it.getAsFile();
+          if (f) {
+            e.preventDefault();
+            setFile(f);
+            setResult(null);
+            recognize(f);
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [recognize]);
 
   return (
     <div className="space-y-6">
@@ -69,7 +94,8 @@ export function RecognizePage() {
             </span>
           ) : (
             <span className="text-sm">
-              Перетащите фото сюда или нажмите, чтобы выбрать
+              Перетащите фото, вставьте из буфера (Ctrl/Cmd+V) или нажмите, чтобы
+              выбрать
             </span>
           )}
           <input

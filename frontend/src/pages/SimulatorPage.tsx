@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { sendAnprEvent } from "../api/anpr";
-import { useCameras } from "../api/hooks";
+import { useActiveSessions, useCameras } from "../api/hooks";
 import type { Direction } from "../api/types";
 import { PlateReadout } from "../components/PlateReadout";
+import { formatDuration } from "../lib/format";
 
 const PRESET_PLATES = ["127AST02", "845BCA02", "010KX02", "333ABC02"];
 
@@ -41,6 +42,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function SimulatorPage() {
   const qc = useQueryClient();
   const cameras = useCameras();
+  const parking = useActiveSessions();
   const counter = useRef(0);
 
   const [plate, setPlate] = useState("127AST02");
@@ -145,6 +147,49 @@ export function SimulatorPage() {
           Прогоняй машины через шлагбаум и смотри, что делает система. События идут в
           тот же бэкенд, что и камера — Дашборд и Сессии обновляются автоматически.
         </p>
+      </div>
+
+      {/* Живое состояние парковки — кто сейчас внутри */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="eyebrow">Сейчас на парковке</div>
+            <div className="mt-1 font-display text-2xl font-bold text-ink">
+              {parking.isLoading ? "…" : (parking.data?.length ?? 0)}{" "}
+              <span className="text-sm font-medium text-ink-500/50">авто</span>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-emerald-400" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            </span>
+            live
+          </span>
+        </div>
+        <div className="mt-4">
+          {!parking.data || parking.data.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">
+              {parking.isError
+                ? "Не удалось загрузить — запущен ли backend?"
+                : "Парковка пуста — отправь «Въезд»"}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {parking.data.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex animate-fade-up items-center gap-3 rounded-xl border border-line bg-paper px-3 py-2"
+                >
+                  <PlateReadout plate={s.plate_number} size="sm" />
+                  <span className="font-mono text-xs font-medium text-emerald-700">
+                    {formatDuration(s.parked_seconds)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

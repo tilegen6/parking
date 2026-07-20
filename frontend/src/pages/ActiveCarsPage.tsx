@@ -1,21 +1,11 @@
 import { Link } from "react-router-dom";
 import { useActiveSessions } from "../api/hooks";
-import { Thumb } from "../components/Thumb";
-import { useState } from "react";
-import { PhotoModal } from "../components/PhotoModal";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
-import {
-  formatDateTime,
-  formatDuration,
-  sessionDurationSeconds,
-  timeAgo,
-} from "../lib/format";
+import { formatDateTime, formatDuration, timeAgo } from "../lib/format";
 
 export function ActiveCarsPage() {
   const { data, isLoading, isError, isFetching } = useActiveSessions();
-  const [photo, setPhoto] = useState<string | null>(null);
-
   const cars = data ?? [];
 
   return (
@@ -45,13 +35,7 @@ export function ActiveCarsPage() {
           eyebrow="Сейчас на парковке"
           value={isLoading ? "…" : cars.length}
           unit="авто"
-          hint={
-            isError
-              ? "нет данных"
-              : isLoading
-                ? "загрузка…"
-                : "активных сессий въезда"
-          }
+          hint={isError ? "нет данных" : "активных сессий"}
         />
       </div>
 
@@ -63,15 +47,13 @@ export function ActiveCarsPage() {
               <th className="px-4 py-3">Номер</th>
               <th className="px-4 py-3">Время въезда</th>
               <th className="px-4 py-3">На парковке</th>
-              <th className="px-4 py-3">Камера въезда</th>
-              <th className="px-4 py-3">Авто</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {isLoading && (
               <tr>
-                <td colSpan={6} className="px-4 py-14 text-center text-ink-500/50">
+                <td colSpan={4} className="px-4 py-14 text-center text-ink-500/50">
                   Загрузка…
                 </td>
               </tr>
@@ -79,7 +61,7 @@ export function ActiveCarsPage() {
 
             {isError && !isLoading && (
               <tr>
-                <td colSpan={6} className="px-4 py-14 text-center text-rose-500">
+                <td colSpan={4} className="px-4 py-14 text-center text-rose-500">
                   Ошибка загрузки. Проверьте backend.
                 </td>
               </tr>
@@ -87,7 +69,7 @@ export function ActiveCarsPage() {
 
             {!isLoading && !isError && cars.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-14 text-center text-ink-500/50">
+                <td colSpan={4} className="px-4 py-14 text-center text-ink-500/50">
                   На парковке сейчас нет машин
                 </td>
               </tr>
@@ -107,13 +89,7 @@ export function ActiveCarsPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3 font-mono font-medium text-emerald-700">
-                  {formatDuration(sessionDurationSeconds(s))}
-                </td>
-                <td className="px-4 py-3 text-ink-500/70">
-                  {s.entry_camera_name ?? "—"}
-                </td>
-                <td className="px-4 py-3">
-                  <Thumb url={s.vehicle_photo_url} alt="Авто" onOpen={setPhoto} />
+                  {formatDuration(s.parked_seconds)}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <Link
@@ -128,8 +104,6 @@ export function ActiveCarsPage() {
           </tbody>
         </table>
       </div>
-
-      {photo && <PhotoModal url={photo} onClose={() => setPhoto(null)} />}
     </div>
   );
 }

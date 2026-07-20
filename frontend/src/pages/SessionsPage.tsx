@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useSessions, useSessionStats } from "../api/hooks";
+import { useActiveSessions, useSessions } from "../api/hooks";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import type { SessionStatus, SessionsFilters } from "../api/types";
@@ -32,10 +32,9 @@ export function SessionsPage() {
   };
 
   const { data, isLoading, isError, isFetching } = useSessions(filters);
-  const stats = useSessionStats();
+  const active = useActiveSessions();
 
   const resetToFirstPage = () => setPage(1);
-
   const hasFilters = Boolean(plate || status || dateFrom || dateTo);
 
   return (
@@ -56,27 +55,21 @@ export function SessionsPage() {
       {/* KPI */}
       <div className="grid gap-4 sm:grid-cols-3">
         <StatTile
-          eyebrow="Машин на парковке"
-          value={stats.isLoading ? "…" : (stats.data?.cars_on_parking ?? 0)}
-          hint="активных сессий сейчас"
+          eyebrow="Сейчас на парковке"
+          value={active.isLoading ? "…" : (active.data?.length ?? 0)}
+          unit="авто"
+          hint="активных сессий"
         />
         <StatTile
-          eyebrow="Заехало сегодня"
-          value={
-            <span className="text-emerald-600">
-              {stats.isLoading ? "…" : (stats.data?.entered_today ?? 0)}
-            </span>
-          }
-          hint="въездов за сутки"
+          eyebrow="Всего сессий"
+          value={data ? data.total : "…"}
+          hint={hasFilters ? "по фильтру" : "за всё время"}
         />
         <StatTile
-          eyebrow="Выехало сегодня"
-          value={
-            <span className="text-amber-600">
-              {stats.isLoading ? "…" : (stats.data?.exited_today ?? 0)}
-            </span>
-          }
-          hint="выездов за сутки"
+          eyebrow="Страница"
+          value={data ? data.page : "…"}
+          unit={data ? `/ ${data.pages}` : undefined}
+          hint={`по ${PAGE_LIMIT} на страницу`}
         />
       </div>
 
@@ -103,8 +96,10 @@ export function SessionsPage() {
             className="input"
           >
             <option value="">Все</option>
-            <option value="ACTIVE">На парковке</option>
-            <option value="COMPLETED">Завершена</option>
+            <option value="active">На парковке</option>
+            <option value="unpaid">Выехал</option>
+            <option value="paid">Оплачено</option>
+            <option value="cancelled">Отменена</option>
           </select>
         </Field>
         <Field label="С даты">
@@ -192,10 +187,11 @@ export function SessionsPage() {
                 <td className="px-4 py-3">
                   <span
                     className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      sessionStatusBadgeClass[s.status]
+                      sessionStatusBadgeClass[s.status] ??
+                      "bg-slate-100 text-slate-500"
                     }`}
                   >
-                    {sessionStatusLabel[s.status]}
+                    {sessionStatusLabel[s.status] ?? s.status}
                   </span>
                 </td>
                 <td className="px-4 py-3 font-mono text-ink-500/70">
@@ -205,9 +201,11 @@ export function SessionsPage() {
                   {s.exit_time ? formatDateTime(s.exit_time) : "—"}
                 </td>
                 <td className="px-4 py-3 font-mono text-ink-500/70">
-                  {formatDuration(sessionDurationSeconds(s))}
+                  {formatDuration(s.parked_seconds ?? sessionDurationSeconds(s))}
                 </td>
-                <td className="px-4 py-3 font-mono text-ink">{formatAmount(s.amount)}</td>
+                <td className="px-4 py-3 font-mono text-ink">
+                  {formatAmount(s.price)}
+                </td>
                 <td className="px-4 py-3 text-right">
                   <Link
                     to={`/sessions/${s.id}`}

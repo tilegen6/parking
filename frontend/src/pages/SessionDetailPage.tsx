@@ -1,10 +1,8 @@
-import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import type { ReactNode } from "react";
 import { useSession } from "../api/hooks";
-import { PhotoModal } from "../components/PhotoModal";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
-import type { ReactNode } from "react";
 import {
   formatAmount,
   formatDateTime,
@@ -18,7 +16,10 @@ export function SessionDetailPage() {
   const params = useParams<{ id: string }>();
   const id = Number(params.id);
   const { data, isLoading, isError, isFetching } = useSession(id);
-  const [photo, setPhoto] = useState<string | null>(null);
+
+  const duration = data
+    ? (data.parked_seconds ?? sessionDurationSeconds(data))
+    : null;
 
   return (
     <div className="space-y-6">
@@ -59,17 +60,16 @@ export function SessionDetailPage() {
         <>
           {/* Карточка-«паспорт» сессии: номер как KZ-знак + статус */}
           <div className="card animate-fade-up p-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <PlateReadout plate={data.plate_number} size="lg" />
-                <span
-                  className={`rounded px-3 py-1 text-sm font-medium ${
-                    sessionStatusBadgeClass[data.status]
-                  }`}
-                >
-                  {sessionStatusLabel[data.status]}
-                </span>
-              </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <PlateReadout plate={data.plate_number} size="lg" />
+              <span
+                className={`rounded px-3 py-1 text-sm font-medium ${
+                  sessionStatusBadgeClass[data.status] ??
+                  "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {sessionStatusLabel[data.status] ?? data.status}
+              </span>
             </div>
 
             <div className="mt-6 border-t border-line pt-6">
@@ -77,15 +77,29 @@ export function SessionDetailPage() {
                 <Row label="Время въезда" value={formatDateTime(data.entry_time)} mono />
                 <Row
                   label="Время выезда"
-                  value={data.exit_time ? formatDateTime(data.exit_time) : "— (на парковке)"}
+                  value={
+                    data.exit_time
+                      ? formatDateTime(data.exit_time)
+                      : "— (на парковке)"
+                  }
                   mono={!!data.exit_time}
                 />
+                <Row label="Время стоянки" value={formatDuration(duration)} />
                 <Row
-                  label="Время стоянки"
-                  value={formatDuration(sessionDurationSeconds(data))}
+                  label="Камера въезда"
+                  value={data.entry_camera_id ? `#${data.entry_camera_id}` : "—"}
+                  mono
                 />
-                <Row label="Камера въезда" value={data.entry_camera_name ?? "—"} />
-                <Row label="Камера выезда" value={data.exit_camera_name ?? "—"} />
+                <Row
+                  label="Камера выезда"
+                  value={data.exit_camera_id ? `#${data.exit_camera_id}` : "—"}
+                  mono
+                />
+                <Row
+                  label="Последняя отметка"
+                  value={data.last_seen ? formatDateTime(data.last_seen) : "—"}
+                  mono={!!data.last_seen}
+                />
               </dl>
             </div>
           </div>
@@ -94,41 +108,17 @@ export function SessionDetailPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatTile
               eyebrow="Время на парковке"
-              value={formatDuration(sessionDurationSeconds(data))}
-              hint={
-                data.status === "ACTIVE" ? "идёт сейчас" : "от въезда до выезда"
-              }
+              value={formatDuration(duration)}
+              hint={data.status === "active" ? "идёт сейчас" : "от въезда до выезда"}
             />
             <StatTile
               eyebrow="Сумма к оплате"
-              value={formatAmount(data.amount)}
-              hint={data.amount != null ? "начислено за стоянку" : "ещё не рассчитана"}
+              value={formatAmount(data.price)}
+              hint={data.price != null ? "начислено за стоянку" : "ещё не рассчитана"}
             />
           </div>
-
-          {/* Фото */}
-          {(data.vehicle_photo_url || data.plate_photo_url) && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {data.vehicle_photo_url && (
-                <PhotoCard
-                  label="Фото автомобиля"
-                  url={data.vehicle_photo_url}
-                  onOpen={setPhoto}
-                />
-              )}
-              {data.plate_photo_url && (
-                <PhotoCard
-                  label="Фото номера"
-                  url={data.plate_photo_url}
-                  onOpen={setPhoto}
-                />
-              )}
-            </div>
-          )}
         </>
       )}
-
-      {photo && <PhotoModal url={photo} onClose={() => setPhoto(null)} />}
     </div>
   );
 }
@@ -145,30 +135,7 @@ function Row({
   return (
     <div>
       <dt className="eyebrow">{label}</dt>
-      <dd className={`mt-1 text-ink ${mono ? "font-mono text-sm" : ""}`}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function PhotoCard({
-  label,
-  url,
-  onOpen,
-}: {
-  label: string;
-  url: string;
-  onOpen: (url: string) => void;
-}) {
-  return (
-    <div className="card overflow-hidden">
-      <div className="border-b border-line px-4 py-2.5">
-        <span className="eyebrow">{label}</span>
-      </div>
-      <button onClick={() => onOpen(url)} className="block w-full">
-        <img src={url} alt={label} className="max-h-80 w-full object-cover" />
-      </button>
+      <dd className={`mt-1 text-ink ${mono ? "font-mono text-sm" : ""}`}>{value}</dd>
     </div>
   );
 }

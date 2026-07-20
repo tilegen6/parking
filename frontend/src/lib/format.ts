@@ -31,13 +31,19 @@ export const directionBadgeClass: Record<Direction, string> = {
 };
 
 export const sessionStatusLabel: Record<SessionStatus, string> = {
-  ACTIVE: "На парковке",
-  COMPLETED: "Завершена",
+  active: "На парковке",
+  unpaid: "Выехал",
+  paid: "Оплачено",
+  cancelled: "Отменена",
+  whitelist: "Абонемент",
 };
 
 export const sessionStatusBadgeClass: Record<SessionStatus, string> = {
-  ACTIVE: "bg-emerald-100 text-emerald-700",
-  COMPLETED: "bg-slate-100 text-slate-500",
+  active: "bg-emerald-100 text-emerald-700",
+  unpaid: "bg-amber-100 text-amber-700",
+  paid: "bg-sky-100 text-sky-700",
+  cancelled: "bg-slate-100 text-slate-500",
+  whitelist: "bg-sky-100 text-sky-700",
 };
 
 // Длительность стоянки в человекочитаемом виде: «2 ч 5 мин», «14 мин», «45 сек».

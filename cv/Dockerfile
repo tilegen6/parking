@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Системные библиотеки: opencv-headless (glib), torch (gomp), ffmpeg (видео), curl (healthcheck)
+# Системные библиотеки: opencv-headless (glib), onnxruntime (gomp), ffmpeg (видео), curl (healthcheck)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libglib2.0-0 libgomp1 ffmpeg curl \
@@ -16,9 +16,9 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Тяжёлые движки: CPU-сборка torch (намного легче CUDA) + EasyOCR + YOLO
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
-    && pip install easyocr ultralytics certifi
+# Спец-движок номеров (ONNX, без torch): детекция open-image-models + OCR fast-plate-ocr.
+# Лёгкий и точнее EasyOCR/generic-YOLO на реальных номерах. certifi — для скачивания моделей.
+RUN pip install "fast-plate-ocr[onnx]" "open-image-models[onnx]" certifi
 
 COPY . .
 

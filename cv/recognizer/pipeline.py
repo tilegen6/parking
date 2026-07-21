@@ -47,6 +47,10 @@ class FrameResult:
 
 
 def make_detector(cfg: RecognizerConfig):
+    if cfg.detector == "plate":
+        from .detect import OpenImagePlateDetector
+
+        return OpenImagePlateDetector()
     if cfg.detector == "yolo":
         from .detect import YoloPlateDetector
 
@@ -65,6 +69,10 @@ def make_ocr(cfg: RecognizerConfig):
         from .ocr import EasyOcr
 
         return EasyOcr()
+    if cfg.engine == "fastplate":
+        from .ocr import FastPlateOcr
+
+        return FastPlateOcr()
     raise ValueError(f"Неизвестный движок OCR: {cfg.engine}")
 
 

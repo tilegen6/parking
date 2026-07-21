@@ -132,15 +132,14 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      CV_ENGINE: ${CV_ENGINE:-easyocr}
-      CV_DETECTOR: ${CV_DETECTOR:-yolo}
+      CV_ENGINE: ${CV_ENGINE:-fastplate}
+      CV_DETECTOR: ${CV_DETECTOR:-plate}
       CV_CONFIDENCE: ${CV_CONFIDENCE:-0.5}
     ports:
       - "8090:8090"
     volumes:
-      # Кэш моделей между перезапусками (иначе докачиваются каждый раз)
-      - cv_easyocr:/root/.EasyOCR
-      - cv_models:/app/recognizer/models
+      # Кэш ONNX-моделей (open-image-models + fast-plate-ocr) между перезапусками
+      - cv_cache:/root/.cache
 
   # ═══════════════════════════════════════════════════════════════
   # ЛОГИРОВАНИЕ: Loki (хранилище) + Promtail (сбор) + Grafana (UI)
@@ -379,6 +378,5 @@ volumes:
   alertmanager_data:
   alertmanager_config:
   postgres_backups:
-  # CV-сервис: кэш моделей EasyOCR/YOLO
-  cv_easyocr:
-  cv_models:
+  # CV-сервис: кэш ONNX-моделей (open-image-models + fast-plate-ocr)
+  cv_cache:

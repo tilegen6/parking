@@ -7,7 +7,7 @@
     POST /recognize  (multipart file) -> номер + размеченное фото (base64)
 
 Движок/детектор берутся из env (CV_ENGINE, CV_DETECTOR, CV_CONFIDENCE);
-дефолт easyocr + yolo. Для тестов — template + whole (без тяжёлых моделей).
+дефолт fastplate + plate (HF-модели номеров, ONNX). Для тестов — template + whole.
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ def _annotate(image: np.ndarray, plate: str | None, box) -> str:
 
 def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
     cfg = cfg or RecognizerConfig(
-        engine=os.environ.get("CV_ENGINE", "easyocr"),
-        detector=os.environ.get("CV_DETECTOR", "yolo"),
+        engine=os.environ.get("CV_ENGINE", "fastplate"),
+        detector=os.environ.get("CV_DETECTOR", "plate"),
         confidence_threshold=float(os.environ.get("CV_CONFIDENCE", "0.5")),
     )
     app = FastAPI(title="Smart Parking CV Service", version="0.1.0")

@@ -206,7 +206,7 @@ export function SimulatorPage() {
                   plate === p ? "ring-2 ring-sky" : "opacity-80 hover:opacity-100"
                 }`}
               >
-                <PlateReadout plate={p} size="sm" />
+                <PlateReadout plate={p} size="sm" copyable={false} />
               </button>
             ))}
           </div>

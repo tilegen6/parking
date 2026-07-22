@@ -59,9 +59,7 @@ def _send(client: httpx.Client, url: str, xml_path: Path, with_photo: bool) -> N
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Replay ANPR events to backend")
-    parser.add_argument(
-        "xml", nargs="?", help="путь к XML события (одиночная отправка)"
-    )
+    parser.add_argument("xml", nargs="?", help="путь к XML события (одиночная отправка)")
     parser.add_argument(
         "--to",
         default="http://localhost:8000/api/v1/hikvision/anpr-event",
@@ -73,9 +71,7 @@ def main() -> int:
         help="готовый сценарий вместо одиночного файла",
     )
     parser.add_argument("--no-photo", action="store_true", help="без вложенного снимка")
-    parser.add_argument(
-        "--repeat", type=int, default=1, help="повторить N раз (для дублей)"
-    )
+    parser.add_argument("--repeat", type=int, default=1, help="повторить N раз (для дублей)")
     args = parser.parse_args()
 
     with_photo = not args.no_photo

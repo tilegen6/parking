@@ -24,14 +24,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Поля, присутствие которых мы отслеживаем в summary.json
-TRACKED = [
-    "plate_number",
-    "direction",
-    "event_time",
-    "confidence",
-    "camera_name",
-    "event_type",
-]
+TRACKED = ["plate_number", "direction", "event_time", "confidence", "camera_name", "event_type"]
 
 
 def _load_summaries(root: Path) -> list[dict[str, object]]:
@@ -55,9 +48,7 @@ def _parse_time(value: object) -> datetime | None:
         return None
 
 
-def _find_duplicates(
-    events: list[dict[str, object]], window_s: float
-) -> list[dict[str, object]]:
+def _find_duplicates(events: list[dict[str, object]], window_s: float) -> list[dict[str, object]]:
     """Сгруппировать события по номеру и найти срабатывания в пределах окна."""
     by_plate: dict[str, list[datetime]] = defaultdict(list)
     for ev in events:
@@ -72,9 +63,7 @@ def _find_duplicates(
         for prev, cur in zip(times, times[1:]):
             gap = (cur - prev).total_seconds()
             if gap <= window_s:
-                dups.append(
-                    {"plate": plate, "gap_s": round(gap, 2), "at": cur.isoformat()}
-                )
+                dups.append({"plate": plate, "gap_s": round(gap, 2), "at": cur.isoformat()})
     return dups
 
 
@@ -133,19 +122,17 @@ def _print_report(rep: dict[str, object]) -> None:
         f"\nDirection присылается камерой: "
         f"{'ДА' if rep['direction_available'] else 'НЕТ — выводить по каналу/IP'}"
     )
-    print(f"Дубли (<= {rep['duplicates_window_s']}s): {rep['duplicates_found']}")
+    print(
+        f"Дубли (<= {rep['duplicates_window_s']}s): {rep['duplicates_found']}"
+    )
     for d in rep["duplicates"]:  # type: ignore[union-attr]
         print(f"  {d['plate']}  +{d['gap_s']}s  @ {d['at']}")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Analyze Hikvision captures")
-    parser.add_argument(
-        "captures", nargs="?", default="captures", help="каталог дампов"
-    )
-    parser.add_argument(
-        "--dups-window", type=float, default=10.0, help="окно дублей, сек"
-    )
+    parser.add_argument("captures", nargs="?", default="captures", help="каталог дампов")
+    parser.add_argument("--dups-window", type=float, default=10.0, help="окно дублей, сек")
     parser.add_argument("--json", action="store_true", help="вывести отчёт как JSON")
     args = parser.parse_args()
 

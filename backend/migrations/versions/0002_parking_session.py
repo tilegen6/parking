@@ -23,7 +23,9 @@ def upgrade() -> None:
         "recognition_event",
         sa.Column("flag", sa.String(length=32), nullable=True),
     )
-    op.create_index("ix_recognition_event_flag", "recognition_event", ["flag"])
+    op.create_index(
+        "ix_recognition_event_flag", "recognition_event", ["flag"]
+    )
 
     op.create_table(
         "parking_session",
@@ -60,14 +62,18 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["entry_camera_id"], ["camera.id"], ondelete="SET NULL"
         ),
-        sa.ForeignKeyConstraint(["exit_camera_id"], ["camera.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(
+            ["exit_camera_id"], ["camera.id"], ondelete="SET NULL"
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(
         "ix_parking_session_plate_number", "parking_session", ["plate_number"]
     )
     op.create_index("ix_parking_session_status", "parking_session", ["status"])
-    op.create_index("ix_parking_session_entry_time", "parking_session", ["entry_time"])
+    op.create_index(
+        "ix_parking_session_entry_time", "parking_session", ["entry_time"]
+    )
     # Составной индекс под самый частый запрос: активная сессия по номеру
     op.create_index(
         "ix_parking_session_plate_status",

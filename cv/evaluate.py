@@ -70,8 +70,14 @@ def load_labels(path: str, labels_from: str, labels_csv: str | None) -> dict[str
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=EVAL_DESC)
     p.add_argument("input", help="папка с изображениями (или один файл)")
-    p.add_argument("--engine", choices=["template", "easyocr"], default="easyocr")
-    p.add_argument("--detector", choices=["whole", "yolo"], default="whole")
+    p.add_argument(
+        "--engine",
+        choices=["template", "easyocr", "fastplate"],
+        default="fastplate",
+    )
+    p.add_argument(
+        "--detector", choices=["whole", "yolo", "plate"], default="plate"
+    )
     p.add_argument("--plate-model", default=None)
     p.add_argument("--confidence", type=float, default=0.85)
     p.add_argument(

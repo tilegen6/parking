@@ -11,3 +11,5 @@ opencv-python-headless>=4.9
 # pip install easyocr certifi   # certifi нужен для скачивания моделей EasyOCR на macOS
 # Опциональная YOLO-детекция пластины (--detector yolo) для грязных полнокадровых фото:
 # pip install ultralytics       # модель детекции номеров скачивается автоматически
+# РЕКОМЕНДУЕТСЯ: спец-движок номеров (--engine fastplate --detector plate), ONNX, без torch:
+# pip install "fast-plate-ocr[onnx]" "open-image-models[onnx]" certifi

@@ -10,6 +10,8 @@ import type {
   PaginatedSessions,
   ParkingSession,
   SessionsFilters,
+  Tariff,
+  TariffInput,
 } from "./types";
 
 export function useEvents(filters: EventsFilters) {
@@ -81,5 +83,40 @@ export function useCreateCamera() {
     mutationFn: (payload: Partial<Camera>) =>
       api.post<Camera>("/api/v1/cameras", payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Тарифы
+
+export function useTariffs() {
+  return useQuery({
+    queryKey: ["tariffs"],
+    queryFn: () => api.get<Tariff[]>("/api/v1/tariffs"),
+  });
+}
+
+export function useCreateTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: TariffInput) =>
+      api.post<Tariff>("/api/v1/tariffs", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
+  });
+}
+
+export function useUpdateTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<TariffInput> }) =>
+      api.put<Tariff>(`/api/v1/tariffs/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
+  });
+}
+
+export function useDeleteTariff() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/tariffs/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
   });
 }

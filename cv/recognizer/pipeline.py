@@ -47,6 +47,10 @@ class FrameResult:
 
 
 def make_detector(cfg: RecognizerConfig):
+    if cfg.detector == "plate":
+        from .detect import OpenImagePlateDetector
+
+        return OpenImagePlateDetector()
     if cfg.detector == "yolo":
         from .detect import YoloPlateDetector
 
@@ -65,6 +69,10 @@ def make_ocr(cfg: RecognizerConfig):
         from .ocr import EasyOcr
 
         return EasyOcr()
+    if cfg.engine == "fastplate":
+        from .ocr import FastPlateOcr
+
+        return FastPlateOcr()
     raise ValueError(f"Неизвестный движок OCR: {cfg.engine}")
 
 
@@ -131,13 +139,17 @@ class Pipeline:
             ):
                 continue
             res = self.process_frame(frame.image)
-            if not res or not res.plate:
-                continue
             h, w = frame.image.shape[:2]
-            box = res.box or (0, 0, w, h)
-            tid = tracker.update([box])[0]
-            votes.setdefault(tid, MajorityVote()).add(res.plate, res.confidence)
-            last[tid] = (frame, res)
+            # трекер обновляется на КАЖДОМ обработанном кадре — иначе max_age
+            # считается по детекциям, а не по кадрам, и две машины через серию
+            # «пустых» кадров сольются в один трек.
+            if res and res.plate:
+                box = res.box or (0, 0, w, h)
+                tid = tracker.update([box])[0]
+                votes.setdefault(tid, MajorityVote()).add(res.plate, res.confidence)
+                last[tid] = (frame, res)
+            else:
+                tracker.update([])  # старим треки на кадре без номера
 
         events = []
         for tid, vote in votes.items():

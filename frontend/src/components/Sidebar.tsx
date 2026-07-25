@@ -5,9 +5,10 @@ const links = [
   { to: "/events", label: "События", icon: "◎" },
   { to: "/sessions", label: "Сессии", icon: "▤" },
   { to: "/active", label: "На парковке", icon: "▣" },
+  { to: "/tariffs", label: "Тарифы", icon: "₸" },
   { to: "/cameras", label: "Камеры", icon: "▷" },
   { to: "/recognize", label: "Тест CV", icon: "✦" },
-  { to: "/simulator", label: "Симулятор", icon: "⚡" },
+  { to: "/studio", label: "Студия", icon: "⚙" },
 ];
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {

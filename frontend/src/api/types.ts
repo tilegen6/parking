@@ -98,3 +98,26 @@ export interface SessionsFilters {
   date_from?: string;
   date_to?: string;
 }
+
+// Тарифы (соответствует src/schemas.py TariffOut)
+
+export interface Tariff {
+  id: number;
+  name: string;
+  free_minutes: number;
+  price_per_hour: number;
+  daily_cap: number | null;
+  currency: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TariffInput {
+  name: string;
+  free_minutes: number;
+  price_per_hour: number;
+  daily_cap: number | null;
+  currency?: string;
+  is_active?: boolean;
+}

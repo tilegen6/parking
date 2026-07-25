@@ -50,12 +50,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument(
         "--demo", action="store_true", help="сгенерировать синтетику и прогнать её"
     )
-    p.add_argument("--engine", choices=["template", "easyocr"], default="template")
+    p.add_argument(
+        "--engine", choices=["template", "easyocr", "fastplate"], default="template"
+    )
     p.add_argument(
         "--detector",
-        choices=["whole", "yolo"],
+        choices=["whole", "yolo", "plate"],
         default="whole",
-        help="yolo = детекция пластины перед OCR (для грязных полнокадровых фото)",
+        help="plate = open-image-models (лучший), yolo = generic, whole = весь кадр",
     )
     p.add_argument("--plate-model", default=None, help="путь к YOLO-модели (.pt)")
     p.add_argument(
@@ -104,10 +106,12 @@ def main(argv: list[str] | None = None) -> int:
         else ImageSource(args.input)
     )
     runner = pipeline.run_video if args.video else pipeline.run_images
-    events = runner(source, sinks)
-
-    for s in sinks["json"]:
-        s.close()
+    try:
+        events = runner(source, sinks)
+    finally:
+        # закрываем JSON-синки даже при исключении в пайплайне
+        for s in sinks["json"]:
+            s.close()
 
     ok = sum(1 for e in events if e.get("flag") == "ok")
     print(

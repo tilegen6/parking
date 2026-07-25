@@ -139,10 +139,50 @@ class EasyOcr(PlateOcr):
         prepared = self._preprocess(image) if self._preprocess else image
         prepared = _upscale_small(prepared)
         results: list[OcrResult] = []
-        for box, text, conf in self._reader.readtext(prepared):
+        # allowlist (только символы номеров) повышает точность и confidence на пластинах
+        for box, text, conf in self._reader.readtext(
+            prepared, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        ):
             xs = [int(p[0]) for p in box]
             ys = [int(p[1]) for p in box]
             results.append(
                 OcrResult(text, float(conf), (min(xs), min(ys), max(xs), max(ys)))
             )
+        return results
+
+
+# --------------------- FastPlateOcr (специализир. на номерах) ------------------
+
+
+class FastPlateOcr(PlateOcr):
+    """OCR, заточенный под автономера (fast-plate-ocr, ONNX, без torch).
+
+    Модель `global-plates-mobile-vit-v2-model` — мультирегиональная (латиница),
+    подходит для KZ-номеров. На реальных KZ-фото заметно точнее EasyOCR.
+    """
+
+    def __init__(self, hub_model: str = "global-plates-mobile-vit-v2-model") -> None:
+        from .util import ensure_ssl_certs
+
+        ensure_ssl_certs()
+        try:
+            from fast_plate_ocr import LicensePlateRecognizer
+        except ImportError as e:
+            raise RuntimeError(
+                'fast-plate-ocr не установлен. `pip install "fast-plate-ocr[onnx]"`'
+            ) from e
+        self._ocr = LicensePlateRecognizer(
+            hub_ocr_model=hub_model  # type: ignore[arg-type]
+        )
+
+    def read(self, image: np.ndarray) -> list[OcrResult]:
+        if cv2 is None:
+            return []
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        results: list[OcrResult] = []
+        # return_confidence=True -> в PlatePrediction появляется char_probs
+        for p in self._ocr.run(gray, return_confidence=True):
+            probs = getattr(p, "char_probs", None)
+            conf = float(np.mean(probs)) if probs is not None and len(probs) else 0.0
+            results.append(OcrResult(p.plate, conf))
         return results

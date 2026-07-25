@@ -102,3 +102,43 @@ class YoloPlateDetector(PlateDetector):
         # самые уверенные детекции первыми
         regions.sort(key=lambda t: t[0], reverse=True)
         return [r for _, r in regions]
+
+
+class OpenImagePlateDetector(PlateDetector):
+    """Детектор номеров open-image-models (ONNX YOLO-v9, модель с HF, без torch).
+
+    Обучен на номерах -> точнее и легче, чем generic YOLO. Модель скачивается
+    автоматически в кэш при первом использовании.
+    """
+
+    def __init__(
+        self,
+        detection_model: str = "yolo-v9-t-640-license-plate-end2end",
+        conf: float = 0.25,
+    ) -> None:
+        from .util import ensure_ssl_certs
+
+        ensure_ssl_certs()
+        try:
+            from open_image_models import LicensePlateDetector
+        except ImportError as e:
+            raise RuntimeError(
+                "open-image-models не установлен. "
+                '`pip install "open-image-models[onnx]"`'
+            ) from e
+        self._det = LicensePlateDetector(
+            detection_model=detection_model,  # type: ignore[arg-type]
+            conf_thresh=conf,
+        )
+
+    def detect(self, frame: np.ndarray) -> list[Region]:
+        h, w = frame.shape[:2]
+        regions: list[Region] = []
+        for d in self._det.predict(frame):
+            bb = d.bounding_box
+            x1, y1 = max(0, int(bb.x1)), max(0, int(bb.y1))
+            x2, y2 = min(w, int(bb.x2)), min(h, int(bb.y2))
+            crop = frame[y1:y2, x1:x2]
+            if crop.size:
+                regions.append(Region(crop, (x1, y1, x2, y2)))
+        return regions

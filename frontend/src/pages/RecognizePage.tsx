@@ -1,5 +1,10 @@
-import { useState } from "react";
-import { recognizePlate, type RecognizeResult } from "../api/cv";
+import { useCallback, useEffect, useState } from "react";
+import {
+  getPipelineVersions,
+  recognizePlate,
+  type PipelineVersion,
+  type RecognizeResult,
+} from "../api/cv";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import { formatConfidence } from "../lib/format";
@@ -9,6 +14,21 @@ export function RecognizePage() {
   const [result, setResult] = useState<RecognizeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [threshold, setThreshold] = useState(0.4);
+  const [versions, setVersions] = useState<PipelineVersion[]>([]);
+  const [version, setVersion] = useState("fastplate");
+
+  // список версий пайплайна с сервиса (для выпадающего списка)
+  useEffect(() => {
+    getPipelineVersions()
+      .then((r) => {
+        setVersions(r.versions);
+        setVersion(r.default);
+      })
+      .catch(() => {
+        /* сервис не поднят — оставим дефолт */
+      });
+  }, []);
 
   const pick = (f: File | null) => {
     setFile(f);
@@ -16,12 +36,11 @@ export function RecognizePage() {
     setError(null);
   };
 
-  const run = async () => {
-    if (!file) return;
+  const recognize = useCallback(async (f: File, ver: string) => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await recognizePlate(file));
+      setResult(await recognizePlate(f, ver));
     } catch (e) {
       setError(
         e instanceof Error
@@ -31,7 +50,33 @@ export function RecognizePage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const run = () => {
+    if (file) recognize(file, version);
   };
+
+  // Вставка фото из буфера обмена (Ctrl+V / Cmd+V) — где угодно на странице
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of Array.from(items)) {
+        if (it.type.startsWith("image/")) {
+          const f = it.getAsFile();
+          if (f) {
+            e.preventDefault();
+            setFile(f);
+            setResult(null);
+            recognize(f, version);
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [recognize, version]);
 
   return (
     <div className="space-y-6">
@@ -68,7 +113,8 @@ export function RecognizePage() {
             </span>
           ) : (
             <span className="text-sm">
-              Перетащите фото сюда или нажмите, чтобы выбрать
+              Перетащите фото, вставьте из буфера (Ctrl/Cmd+V) или нажмите, чтобы
+              выбрать
             </span>
           )}
           <input
@@ -78,6 +124,25 @@ export function RecognizePage() {
             onChange={(e) => pick(e.target.files?.[0] ?? null)}
           />
         </label>
+
+        {versions.length > 0 && (
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500/70">
+              Версия пайплайна
+            </span>
+            <select
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              className="w-full max-w-md rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink transition focus:border-sky focus:outline-none"
+            >
+              {versions.map((v) => (
+                <option key={v.name} value={v.name}>
+                  {v.label} — {v.desc}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <div className="flex items-center gap-3">
           <button
@@ -89,6 +154,22 @@ export function RecognizePage() {
           </button>
           {error && <span className="text-sm text-rose-500">{error}</span>}
         </div>
+
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-ink-500/70">
+            Порог уверенности:{" "}
+            <span className="font-mono text-ink">{threshold.toFixed(2)}</span>
+          </span>
+          <input
+            type="range"
+            min={0.1}
+            max={0.95}
+            step={0.05}
+            value={threshold}
+            onChange={(e) => setThreshold(Number(e.target.value))}
+            className="w-full max-w-xs accent-sky"
+          />
+        </label>
       </div>
 
       {result && (
@@ -101,15 +182,26 @@ export function RecognizePage() {
                 <PlateReadout plate={result.plate_number} size="lg" />
               </div>
               <div className="mt-3">
-                <FlagBadge flag={result.flag} />
+                <ConfBadge
+                  ok={result.confidence != null && result.confidence >= threshold}
+                />
               </div>
+              {result.version && (
+                <p className="mt-2 text-xs text-ink-500/60">
+                  Версия:{" "}
+                  <span className="font-mono text-ink-500/80">
+                    {result.version}
+                  </span>{" "}
+                  · {result.engine}/{result.detector}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <StatTile
                 eyebrow="Уверенность"
                 value={formatConfidence(result.confidence)}
-                hint="порог распознавания 85%"
+                hint={`порог ${Math.round(threshold * 100)}%`}
               />
               <StatTile
                 eyebrow="Валидность KZ"
@@ -144,15 +236,14 @@ export function RecognizePage() {
   );
 }
 
-function FlagBadge({ flag }: { flag: string }) {
-  const ok = flag === "ok";
+function ConfBadge({ ok }: { ok: boolean }) {
   return (
     <span
       className={`rounded px-2 py-0.5 text-xs font-medium ${
         ok ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
       }`}
     >
-      {ok ? "распознан" : "low_confidence"}
+      {ok ? "распознан" : "низкая уверенность"}
     </span>
   );
 }

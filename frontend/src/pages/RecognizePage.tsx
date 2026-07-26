@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { recognizePlate, type RecognizeResult } from "../api/cv";
+import {
+  getPipelineVersions,
+  recognizePlate,
+  type PipelineVersion,
+  type RecognizeResult,
+} from "../api/cv";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import { formatConfidence } from "../lib/format";
@@ -10,6 +15,20 @@ export function RecognizePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threshold, setThreshold] = useState(0.4);
+  const [versions, setVersions] = useState<PipelineVersion[]>([]);
+  const [version, setVersion] = useState("fastplate");
+
+  // список версий пайплайна с сервиса (для выпадающего списка)
+  useEffect(() => {
+    getPipelineVersions()
+      .then((r) => {
+        setVersions(r.versions);
+        setVersion(r.default);
+      })
+      .catch(() => {
+        /* сервис не поднят — оставим дефолт */
+      });
+  }, []);
 
   const pick = (f: File | null) => {
     setFile(f);
@@ -17,11 +36,11 @@ export function RecognizePage() {
     setError(null);
   };
 
-  const recognize = useCallback(async (f: File) => {
+  const recognize = useCallback(async (f: File, ver: string) => {
     setLoading(true);
     setError(null);
     try {
-      setResult(await recognizePlate(f));
+      setResult(await recognizePlate(f, ver));
     } catch (e) {
       setError(
         e instanceof Error
@@ -34,7 +53,7 @@ export function RecognizePage() {
   }, []);
 
   const run = () => {
-    if (file) recognize(file);
+    if (file) recognize(file, version);
   };
 
   // Вставка фото из буфера обмена (Ctrl+V / Cmd+V) — где угодно на странице
@@ -49,7 +68,7 @@ export function RecognizePage() {
             e.preventDefault();
             setFile(f);
             setResult(null);
-            recognize(f);
+            recognize(f, version);
           }
           return;
         }
@@ -57,7 +76,7 @@ export function RecognizePage() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [recognize]);
+  }, [recognize, version]);
 
   return (
     <div className="space-y-6">
@@ -106,6 +125,25 @@ export function RecognizePage() {
           />
         </label>
 
+        {versions.length > 0 && (
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-ink-500/70">
+              Версия пайплайна
+            </span>
+            <select
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              className="w-full max-w-md rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink transition focus:border-sky focus:outline-none"
+            >
+              {versions.map((v) => (
+                <option key={v.name} value={v.name}>
+                  {v.label} — {v.desc}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <div className="flex items-center gap-3">
           <button
             onClick={run}
@@ -148,6 +186,15 @@ export function RecognizePage() {
                   ok={result.confidence != null && result.confidence >= threshold}
                 />
               </div>
+              {result.version && (
+                <p className="mt-2 text-xs text-ink-500/60">
+                  Версия:{" "}
+                  <span className="font-mono text-ink-500/80">
+                    {result.version}
+                  </span>{" "}
+                  · {result.engine}/{result.detector}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

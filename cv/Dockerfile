@@ -16,9 +16,13 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Спец-движок номеров (ONNX, без torch): детекция open-image-models + OCR fast-plate-ocr.
-# Лёгкий и точнее EasyOCR/generic-YOLO на реальных номерах. certifi — для скачивания моделей.
+# Движки версий пайплайна (переключаются параметром version):
+# v2 (дефолт): fast-plate-ocr + open-image-models (ONNX, лёгкие, точнее на номерах)
 RUN pip install "fast-plate-ocr[onnx]" "open-image-models[onnx]" certifi
+# v1 (MVP, как в ТЗ): EasyOCR + YOLOv8 -> CPU-torch (тяжёлый), отдельным слоем.
+# Можно убрать, если нужен только v2 (образ ~1.2ГБ вместо ~3ГБ).
+RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
+    && pip install easyocr ultralytics
 
 COPY . .
 

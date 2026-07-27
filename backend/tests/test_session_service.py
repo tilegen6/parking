@@ -43,7 +43,9 @@ async def test_duplicate_entry_updates_last_seen(db):
     _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(seconds=5))
     assert r2.action == "updated_last_seen"
     assert r2.session_id == r1.session_id
-    total = (await db.execute(select(func.count()).select_from(ParkingSession))).scalar_one()
+    total = (
+        await db.execute(select(func.count()).select_from(ParkingSession))
+    ).scalar_one()
     assert total == 1
 
 
@@ -59,7 +61,9 @@ async def test_entry_exit_closes_with_duration(db):
 async def test_duplicate_exit_ignored(db):
     await _emit(db, "123ABC02", Direction.ENTRY, T0)
     await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=30))
-    _, r = await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=30, seconds=3))
+    _, r = await _emit(
+        db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=30, seconds=3)
+    )
     assert r.action == "duplicate_exit"
 
 
@@ -67,7 +71,9 @@ async def test_exit_without_session_flags_event(db):
     event, r = await _emit(db, "999ZZZ09", Direction.EXIT, T0)
     assert r.action == "event_without_session"
     assert event.flag == EventFlag.EVENT_WITHOUT_SESSION
-    total = (await db.execute(select(func.count()).select_from(ParkingSession))).scalar_one()
+    total = (
+        await db.execute(select(func.count()).select_from(ParkingSession))
+    ).scalar_one()
     assert total == 0
 
 

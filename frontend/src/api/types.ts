@@ -121,3 +121,27 @@ export interface TariffInput {
   currency?: string;
   is_active?: boolean;
 }
+
+// Платежи (соответствует src/schemas.py PaymentOut)
+
+export type PaymentStatus = "pending" | "paid" | "failed";
+
+export interface Payment {
+  id: number;
+  session_id: number;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  provider: string;
+  provider_payment_id: string;
+  pay_url: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingStats {
+  revenue_today: number;
+  unpaid_count: number;
+  avg_parked_seconds: number | null;
+}

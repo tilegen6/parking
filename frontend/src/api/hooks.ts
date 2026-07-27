@@ -3,12 +3,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, buildQuery } from "./client";
 import type {
+  BillingStats,
   Camera,
   DashboardStats,
   EventsFilters,
   PaginatedEvents,
   PaginatedSessions,
   ParkingSession,
+  Payment,
   SessionsFilters,
   Tariff,
   TariffInput,
@@ -118,5 +120,45 @@ export function useDeleteTariff() {
   return useMutation({
     mutationFn: (id: number) => api.del(`/api/v1/tariffs/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tariffs"] }),
+  });
+}
+
+// Платежи
+
+export function useUnpaidSessions() {
+  return useQuery({
+    queryKey: ["sessions", "unpaid"],
+    queryFn: () => api.get<ParkingSession[]>("/api/v1/parking-sessions/unpaid"),
+    refetchInterval: 5000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useBillingStats() {
+  return useQuery({
+    queryKey: ["billing-stats"],
+    queryFn: () => api.get<BillingStats>("/api/v1/dashboard/billing"),
+    refetchInterval: 5000,
+  });
+}
+
+export function useCreatePayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) =>
+      api.post<Payment>("/api/v1/payments/create", { session_id: sessionId }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+/** Подтверждение оплаты через webhook (в MVP — вместо реального провайдера). */
+export function useConfirmPaymentMock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (providerPaymentId: string) =>
+      api.post<Payment>("/api/v1/payments/webhook", {
+        provider_payment_id: providerPaymentId,
+      }),
+    onSuccess: () => qc.invalidateQueries(),
   });
 }

@@ -2,8 +2,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { sendAnprEvent } from "../api/anpr";
-import { useActiveSessions, useTariffs } from "../api/hooks";
-import type { Direction, Tariff } from "../api/types";
+import {
+  useActiveSessions,
+  useConfirmPaymentMock,
+  useCreatePayment,
+  useTariffs,
+  useUnpaidSessions,
+} from "../api/hooks";
+import type { Direction, ParkingSession, Tariff } from "../api/types";
 import { PlateReadout } from "../components/PlateReadout";
 import { formatDuration } from "../lib/format";
 import { estimatePrice, formatMoney } from "../lib/tariff";
@@ -46,7 +52,19 @@ export function StudioPage() {
   const qc = useQueryClient();
   const parking = useActiveSessions();
   const tariffs = useTariffs();
+  const unpaid = useUnpaidSessions();
+  const createPayment = useCreatePayment();
+  const confirmPayment = useConfirmPaymentMock();
   const counter = useRef(0);
+
+  const paying = createPayment.isPending || confirmPayment.isPending;
+
+  // Оплата (mock): создать платёж -> подтвердить webhook -> сессия становится PAID
+  const payFor = (session: ParkingSession) => {
+    createPayment.mutate(session.id, {
+      onSuccess: (payment) => confirmPayment.mutate(payment.provider_payment_id),
+    });
+  };
 
   const [plate, setPlate] = useState("127AST02");
   const [confidence, setConfidence] = useState(0.95);
@@ -208,6 +226,56 @@ export function StudioPage() {
             бэкенде при выезде).
           </p>
         )}
+      </div>
+
+      {/* К оплате (долги) — оплата mock */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="eyebrow">К оплате · долги</div>
+            <div className="mt-1 font-display text-2xl font-bold text-ink">
+              {unpaid.isLoading ? "…" : (unpaid.data?.length ?? 0)}{" "}
+              <span className="text-sm font-medium text-ink-500/50">сессий</span>
+            </div>
+          </div>
+          {paying && (
+            <span className="text-xs font-medium text-sky-700">оплата…</span>
+          )}
+        </div>
+        <div className="mt-4">
+          {!unpaid.data || unpaid.data.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">
+              Долгов нет — выехавшие без оплаты появятся здесь
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {unpaid.data.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex animate-fade-up items-center justify-between gap-3 rounded-xl border border-line bg-paper px-3 py-2.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <PlateReadout plate={s.plate_number} size="sm" />
+                    <span className="font-mono text-sm font-semibold text-ink">
+                      {formatMoney(s.price, activeTariff?.currency ?? "KZT")}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => payFor(s)}
+                    disabled={paying}
+                    className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+                  >
+                    оплатить (mock)
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="mt-3 text-xs text-ink-500/50">
+          «Оплатить (mock)» создаёт платёж и подтверждает его webhook'ом — сессия
+          становится «оплачена». Реального провайдера тут нет.
+        </p>
       </div>
 
       {/* Эмуляция въезда/выезда */}

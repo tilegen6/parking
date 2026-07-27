@@ -207,12 +207,22 @@ export function SessionsPage() {
                   {formatAmount(s.price)}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Link
-                    to={`/sessions/${s.id}`}
-                    className="text-sm font-medium text-sky-700 transition hover:underline"
-                  >
-                    Открыть
-                  </Link>
+                  <div className="flex justify-end gap-3">
+                    {s.status === "unpaid" && (
+                      <Link
+                        to={`/pay/${s.id}`}
+                        className="text-sm font-medium text-brand transition hover:underline"
+                      >
+                        Оплатить
+                      </Link>
+                    )}
+                    <Link
+                      to={`/sessions/${s.id}`}
+                      className="text-sm font-medium text-sky-700 transition hover:underline"
+                    >
+                      Открыть
+                    </Link>
+                  </div>
                 </td>
               </tr>
             ))}

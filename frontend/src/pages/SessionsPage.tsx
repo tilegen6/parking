@@ -208,7 +208,7 @@ export function SessionsPage() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-3">
-                    {s.status === "unpaid" && (
+                    {(s.status === "unpaid" || s.status === "active") && (
                       <Link
                         to={`/pay/${s.id}`}
                         className="text-sm font-medium text-brand transition hover:underline"

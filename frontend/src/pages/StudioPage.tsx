@@ -7,12 +7,12 @@ import {
   useConfirmPaymentMock,
   useCreatePayment,
   useTariffs,
-  useUnpaidSessions,
 } from "../api/hooks";
 import type { Direction, ParkingSession, Tariff } from "../api/types";
 import { PlateReadout } from "../components/PlateReadout";
 import { formatDuration } from "../lib/format";
-import { estimatePrice, formatMoney } from "../lib/tariff";
+import { amountDue, estimatePrice, formatMoney } from "../lib/tariff";
+import { RecognizePage } from "./RecognizePage";
 
 const ACTION_META: Record<string, { label: string; cls: string }> = {
   created: { label: "создана сессия", cls: "bg-emerald-100 text-emerald-700" },
@@ -21,6 +21,10 @@ const ACTION_META: Record<string, { label: string; cls: string }> = {
   duplicate_exit: { label: "дубль выезда", cls: "bg-amber-100 text-amber-700" },
   event_without_session: {
     label: "выезд без сессии",
+    cls: "bg-rose-100 text-rose-700",
+  },
+  exit_denied_unpaid: {
+    label: "🚧 выезд заблокирован — нужна оплата",
     cls: "bg-rose-100 text-rose-700",
   },
   low_confidence: { label: "низкая уверенность", cls: "bg-amber-100 text-amber-700" },
@@ -52,11 +56,11 @@ export function StudioPage() {
   const qc = useQueryClient();
   const parking = useActiveSessions();
   const tariffs = useTariffs();
-  const unpaid = useUnpaidSessions();
   const createPayment = useCreatePayment();
   const confirmPayment = useConfirmPaymentMock();
   const counter = useRef(0);
 
+  const [tab, setTab] = useState<"kpp" | "cv">("kpp");
   const paying = createPayment.isPending || confirmPayment.isPending;
 
   // Оплата (mock): создать платёж -> подтвердить webhook -> сессия становится PAID
@@ -116,6 +120,10 @@ export function StudioPage() {
   }
 
   const cars = parking.data ?? [];
+  // Должники: машины на парковке, у которых есть незакрытый долг по тарифу
+  const owing = cars
+    .map((s) => ({ session: s, due: amountDue(s, activeTariff) }))
+    .filter((x) => x.due > 0);
 
   return (
     <div className="space-y-6">
@@ -130,6 +138,31 @@ export function StudioPage() {
           же бэкенд, что и камера.
         </p>
       </div>
+
+      {/* Вкладки */}
+      <div className="flex gap-1 border-b border-line">
+        {[
+          { id: "kpp" as const, label: "Эмуляция КПП" },
+          { id: "cv" as const, label: "Тест CV" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition ${
+              tab === t.id
+                ? "border-sky text-ink"
+                : "border-transparent text-ink-500/50 hover:text-ink-500/80"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "cv" && <RecognizePage />}
+
+      {tab === "kpp" && (
+        <div className="space-y-6">
 
       {/* Активный тариф */}
       {activeTariff ? (
@@ -228,14 +261,14 @@ export function StudioPage() {
         )}
       </div>
 
-      {/* К оплате (долги) — оплата mock */}
+      {/* К оплате (долги) — оплата ДО выезда, mock */}
       <div className="card p-5">
         <div className="flex items-center justify-between">
           <div>
             <div className="eyebrow">К оплате · долги</div>
             <div className="mt-1 font-display text-2xl font-bold text-ink">
-              {unpaid.isLoading ? "…" : (unpaid.data?.length ?? 0)}{" "}
-              <span className="text-sm font-medium text-ink-500/50">сессий</span>
+              {owing.length}{" "}
+              <span className="text-sm font-medium text-ink-500/50">машин</span>
             </div>
           </div>
           {paying && (
@@ -243,13 +276,13 @@ export function StudioPage() {
           )}
         </div>
         <div className="mt-4">
-          {!unpaid.data || unpaid.data.length === 0 ? (
+          {owing.length === 0 ? (
             <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">
-              Долгов нет — выехавшие без оплаты появятся здесь
+              Долгов нет — оплаченные могут выезжать
             </p>
           ) : (
             <div className="space-y-2">
-              {unpaid.data.map((s) => (
+              {owing.map(({ session: s, due }) => (
                 <div
                   key={s.id}
                   className="flex animate-fade-up items-center justify-between gap-3 rounded-xl border border-line bg-paper px-3 py-2.5"
@@ -257,8 +290,13 @@ export function StudioPage() {
                   <div className="flex items-center gap-3">
                     <PlateReadout plate={s.plate_number} size="sm" />
                     <span className="font-mono text-sm font-semibold text-ink">
-                      {formatMoney(s.price, activeTariff?.currency ?? "KZT")}
+                      {formatMoney(due, activeTariff?.currency ?? "KZT")}
                     </span>
+                    {s.paid_amount > 0 && (
+                      <span className="font-mono text-xs text-emerald-700">
+                        доплата · уже {formatMoney(s.paid_amount)}
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={() => payFor(s)}
@@ -273,8 +311,8 @@ export function StudioPage() {
           )}
         </div>
         <p className="mt-3 text-xs text-ink-500/50">
-          «Оплатить (mock)» создаёт платёж и подтверждает его webhook'ом — сессия
-          становится «оплачена». Реального провайдера тут нет.
+          Оплатить нужно ДО выезда — иначе шлагбаум не откроется. Сумма — текущий
+          долг (цена за время минус уже оплачено).
         </p>
       </div>
 
@@ -431,6 +469,8 @@ export function StudioPage() {
           })}
         </ul>
       </div>
+        </div>
+      )}
     </div>
   );
 }

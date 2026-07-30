@@ -3,15 +3,17 @@ import {
   useConfirmPaymentMock,
   useCreatePayment,
   useSession,
+  useTariffs,
 } from "../api/hooks";
 import { PlateReadout } from "../components/PlateReadout";
-import { formatMoney } from "../lib/tariff";
+import { amountDue, formatMoney } from "../lib/tariff";
 
 export function PaymentPage() {
   const { sessionId } = useParams();
   const id = Number(sessionId);
   const navigate = useNavigate();
   const session = useSession(id);
+  const tariffs = useTariffs();
   const createPayment = useCreatePayment();
   const confirm = useConfirmPaymentMock();
   const paying = createPayment.isPending || confirm.isPending;
@@ -29,6 +31,8 @@ export function PaymentPage() {
   };
 
   const s = session.data;
+  const activeTariff = tariffs.data?.find((t) => t.is_active) ?? null;
+  const due = s ? amountDue(s, activeTariff) : 0;
 
   return (
     <div className="mx-auto max-w-md space-y-6">
@@ -51,19 +55,26 @@ export function PaymentPage() {
               <div className="text-center">
                 <div className="eyebrow">К оплате</div>
                 <div className="font-display text-3xl font-bold text-ink">
-                  {formatMoney(s.price)}
+                  {formatMoney(due)}
                 </div>
+                {s.paid_amount > 0 && due > 0 && (
+                  <div className="mt-1 text-xs text-ink-500/60">
+                    доплата · уже оплачено {formatMoney(s.paid_amount)}
+                  </div>
+                )}
               </div>
             </div>
 
-            {s.status === "paid" ? (
+            {s.status === "paid" || due <= 0 ? (
               <p className="rounded-lg bg-emerald-50 py-3 text-center text-sm font-medium text-emerald-700">
-                Уже оплачено ✓
+                {s.status === "paid"
+                  ? "Оплачено ✓"
+                  : "Долга нет — можно выезжать ✓"}
               </p>
             ) : (
               <button
                 onClick={pay}
-                disabled={paying || !s.price}
+                disabled={paying}
                 className="w-full rounded-lg bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
               >
                 {paying ? "Оплата…" : "Оплатить (mock)"}

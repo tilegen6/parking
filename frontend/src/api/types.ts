@@ -74,6 +74,7 @@ export interface ParkingSession {
   // Вычисляется бэкендом: active = сейчас минус въезд, закрытая = duration_seconds
   parked_seconds: number | null;
   price: number | null;
+  paid_amount: number;
   entry_event_id: number | null;
   exit_event_id: number | null;
   entry_camera_id: number | null;

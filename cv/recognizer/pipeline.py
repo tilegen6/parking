@@ -139,13 +139,17 @@ class Pipeline:
             ):
                 continue
             res = self.process_frame(frame.image)
-            if not res or not res.plate:
-                continue
             h, w = frame.image.shape[:2]
-            box = res.box or (0, 0, w, h)
-            tid = tracker.update([box])[0]
-            votes.setdefault(tid, MajorityVote()).add(res.plate, res.confidence)
-            last[tid] = (frame, res)
+            # трекер обновляется на КАЖДОМ обработанном кадре — иначе max_age
+            # считается по детекциям, а не по кадрам, и две машины через серию
+            # «пустых» кадров сольются в один трек.
+            if res and res.plate:
+                box = res.box or (0, 0, w, h)
+                tid = tracker.update([box])[0]
+                votes.setdefault(tid, MajorityVote()).add(res.plate, res.confidence)
+                last[tid] = (frame, res)
+            else:
+                tracker.update([])  # старим треки на кадре без номера
 
         events = []
         for tid, vote in votes.items():

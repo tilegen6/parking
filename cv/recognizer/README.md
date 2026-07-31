@@ -131,10 +131,11 @@ python cv/service.py                    # http://localhost:8090
 # фронт: npm run dev / docker compose -> страница «Тест CV» (/recognize)
 ```
 
-Эндпоинты: `GET /health`, `POST /recognize` (multipart `file`) → JSON с номером,
-confidence, флагом, кандидатами и размеченным фото (base64). Движок/детектор — из env
-(`CV_ENGINE`, `CV_DETECTOR`, `CV_CONFIDENCE`; дефолт `easyocr`+`yolo`). Адрес сервиса на
-фронте — `VITE_CV_URL` (дефолт `http://localhost:8090`).
+Эндпоинты: `GET /health`, `GET /versions`, `POST /recognize` (multipart `file`,
+опц. `version`) → JSON с номером, confidence, флагом, кандидатами и размеченным фото
+(base64). Версия пайплайна — из env `CV_VERSION` (дефолт `fastplate`; ещё `easyocr`,
+`template`) и порог `CV_CONFIDENCE`; либо параметром `version` на каждый запрос. Адрес
+сервиса на фронте — `VITE_CV_URL` (дефолт `http://localhost:8090`).
 
 ## Архитектура (плагинная)
 

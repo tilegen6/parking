@@ -33,6 +33,10 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from recognizer.config import RecognizerConfig  # noqa: E402
 from recognizer.pipeline import Pipeline  # noqa: E402
 
+# Лимиты загрузки (/recognize) — защита от DoS/decompression-bomb
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 МБ на файл
+MAX_PIXELS = 40_000_000  # ~40 Мпикс на распакованный кадр
+
 # Версии пайплайна распознавания — переключаются на лету (параметр version).
 # Порядок = от лучшего к простому. engine = OCR-движок, detector = детектор номера.
 PIPELINE_VERSIONS: dict[str, dict] = {
@@ -157,10 +161,16 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
             raise HTTPException(500, "opencv не установлен на сервере")
         if version not in PIPELINE_VERSIONS:
             raise HTTPException(400, f"неизвестная версия пайплайна: {version}")
+        if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"файл больше {MAX_UPLOAD_BYTES // 1048576} МБ")
         data = await file.read()
+        if len(data) > MAX_UPLOAD_BYTES:  # подстраховка, если size не задан
+            raise HTTPException(413, f"файл больше {MAX_UPLOAD_BYTES // 1048576} МБ")
         img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
         if img is None:
             raise HTTPException(400, "Не удалось прочитать изображение")
+        if img.shape[0] * img.shape[1] > MAX_PIXELS:  # decompression-bomb
+            raise HTTPException(413, "изображение слишком большое (пикселей)")
 
         try:
             res = get_pipeline(version).process_frame(img)

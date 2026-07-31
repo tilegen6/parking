@@ -106,10 +106,12 @@ def main(argv: list[str] | None = None) -> int:
         else ImageSource(args.input)
     )
     runner = pipeline.run_video if args.video else pipeline.run_images
-    events = runner(source, sinks)
-
-    for s in sinks["json"]:
-        s.close()
+    try:
+        events = runner(source, sinks)
+    finally:
+        # закрываем JSON-синки даже при исключении в пайплайне
+        for s in sinks["json"]:
+            s.close()
 
     ok = sum(1 for e in events if e.get("flag") == "ok")
     print(

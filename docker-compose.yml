@@ -132,8 +132,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      CV_ENGINE: ${CV_ENGINE:-fastplate}
-      CV_DETECTOR: ${CV_DETECTOR:-plate}
+      CV_VERSION: ${CV_VERSION:-fastplate}
       CV_CONFIDENCE: ${CV_CONFIDENCE:-0.5}
     ports:
       - "8090:8090"

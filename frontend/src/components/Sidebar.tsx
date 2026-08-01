@@ -7,7 +7,6 @@ const links = [
   { to: "/active", label: "На парковке", icon: "▣" },
   { to: "/tariffs", label: "Тарифы", icon: "₸" },
   { to: "/cameras", label: "Камеры", icon: "▷" },
-  { to: "/recognize", label: "Тест CV", icon: "✦" },
   { to: "/studio", label: "Студия", icon: "⚙" },
 ];
 

@@ -29,15 +29,18 @@ const ACTION_META: Record<string, { label: string; cls: string }> = {
   },
   low_confidence: { label: "низкая уверенность", cls: "bg-amber-100 text-amber-700" },
   ignored: { label: "проигнорировано", cls: "bg-slate-100 text-slate-500" },
+  payment: { label: "💳 оплачено", cls: "bg-emerald-100 text-emerald-700" },
+  payment_error: { label: "ошибка оплаты", cls: "bg-rose-100 text-rose-700" },
 };
 
 interface LogRow {
   key: number;
   time: string;
   plate: string;
-  direction: Direction;
+  direction?: Direction;
   action: string;
   sessionId: number | null;
+  amount?: number;
   error?: string;
 }
 
@@ -63,13 +66,6 @@ export function StudioPage() {
   const [tab, setTab] = useState<"kpp" | "cv">("kpp");
   const paying = createPayment.isPending || confirmPayment.isPending;
 
-  // Оплата (mock): создать платёж -> подтвердить webhook -> сессия становится PAID
-  const payFor = (session: ParkingSession) => {
-    createPayment.mutate(session.id, {
-      onSuccess: (payment) => confirmPayment.mutate(payment.provider_payment_id),
-    });
-  };
-
   const [plate, setPlate] = useState("127AST02");
   const [confidence, setConfidence] = useState(0.95);
   const [log, setLog] = useState<LogRow[]>([]);
@@ -82,6 +78,33 @@ export function StudioPage() {
     counter.current += 1;
     const time = new Date().toLocaleTimeString("ru-RU");
     setLog((prev) => [{ ...row, key: counter.current, time }, ...prev].slice(0, 25));
+  };
+
+  // Оплата (mock): создать платёж -> подтвердить webhook -> лог + сессия PAID
+  const payFor = (session: ParkingSession) => {
+    const fail = (e: unknown) =>
+      pushLog({
+        plate: session.plate_number,
+        action: "payment_error",
+        sessionId: session.id,
+        error: e instanceof Error ? e.message : "ошибка",
+      });
+    createPayment.mutate(session.id, {
+      onSuccess: (payment) =>
+        confirmPayment.mutate(payment.provider_payment_id, {
+          onSuccess: () => {
+            pushLog({
+              plate: session.plate_number,
+              action: "payment",
+              sessionId: session.id,
+              amount: payment.amount,
+            });
+            qc.invalidateQueries();
+          },
+          onError: fail,
+        }),
+      onError: fail,
+    });
   };
 
   async function fire(p: string, dir: Direction, conf = confidence) {
@@ -303,7 +326,7 @@ export function StudioPage() {
                     disabled={paying}
                     className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
                   >
-                    оплатить (mock)
+                    Оплатить
                   </button>
                 </div>
               ))}
@@ -445,9 +468,16 @@ export function StudioPage() {
                   {row.time}
                 </span>
                 <PlateReadout plate={row.plate} size="sm" />
-                <span className="text-sm text-ink-500/70">
-                  {row.direction === "ENTRY" ? "Въезд" : "Выезд"}
-                </span>
+                {row.direction && (
+                  <span className="text-sm text-ink-500/70">
+                    {row.direction === "ENTRY" ? "Въезд" : "Выезд"}
+                  </span>
+                )}
+                {row.amount != null && (
+                  <span className="font-mono text-sm font-semibold text-emerald-700">
+                    {formatMoney(row.amount)}
+                  </span>
+                )}
                 <span className="ml-auto">
                   {row.error ? (
                     <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">

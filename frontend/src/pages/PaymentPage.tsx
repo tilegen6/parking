@@ -77,7 +77,7 @@ export function PaymentPage() {
                 disabled={paying}
                 className="w-full rounded-lg bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
               >
-                {paying ? "Оплата…" : "Оплатить (mock)"}
+                {paying ? "Оплата…" : "Оплатить"}
               </button>
             )}
 

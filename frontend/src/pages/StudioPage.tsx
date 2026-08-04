@@ -9,6 +9,7 @@ import {
   useTariffs,
 } from "../api/hooks";
 import type { Direction, ParkingSession, Tariff } from "../api/types";
+import { PaymentPanel } from "../components/PaymentPanel";
 import { PlateReadout } from "../components/PlateReadout";
 import { formatDuration } from "../lib/format";
 import { amountDue, estimatePrice, formatMoney } from "../lib/tariff";
@@ -65,6 +66,11 @@ export function StudioPage() {
 
   const [tab, setTab] = useState<"kpp" | "cv">("kpp");
   const paying = createPayment.isPending || confirmPayment.isPending;
+  // Открытое окно оплаты (QR + кнопка) — как на странице /pay
+  const [payTarget, setPayTarget] = useState<{
+    session: ParkingSession;
+    due: number;
+  } | null>(null);
 
   const [plate, setPlate] = useState("127AST02");
   const [confidence, setConfidence] = useState(0.95);
@@ -80,15 +86,17 @@ export function StudioPage() {
     setLog((prev) => [{ ...row, key: counter.current, time }, ...prev].slice(0, 25));
   };
 
-  // Оплата (mock): создать платёж -> подтвердить webhook -> лог + сессия PAID
+  // Оплата (mock): создать платёж -> подтвердить webhook -> лог + закрыть окно
   const payFor = (session: ParkingSession) => {
-    const fail = (e: unknown) =>
+    const fail = (e: unknown) => {
       pushLog({
         plate: session.plate_number,
         action: "payment_error",
         sessionId: session.id,
         error: e instanceof Error ? e.message : "ошибка",
       });
+      setPayTarget(null);
+    };
     createPayment.mutate(session.id, {
       onSuccess: (payment) =>
         confirmPayment.mutate(payment.provider_payment_id, {
@@ -100,6 +108,7 @@ export function StudioPage() {
               amount: payment.amount,
             });
             qc.invalidateQueries();
+            setPayTarget(null);
           },
           onError: fail,
         }),
@@ -255,22 +264,25 @@ export function StudioPage() {
               {cars.map((s) => (
                 <div
                   key={s.id}
-                  className="flex animate-fade-up items-center justify-between gap-3 rounded-xl border border-line bg-paper px-3 py-2.5"
+                  className="animate-fade-up rounded-xl border border-line bg-paper px-3 py-2.5"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <PlateReadout plate={s.plate_number} size="sm" />
+                    {activeTariff && (
+                      <span className="font-mono text-sm font-semibold text-ink">
+                        {formatMoney(
+                          estimatePrice(s.parked_seconds ?? 0, activeTariff),
+                          activeTariff.currency,
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="font-mono text-xs text-ink-500/60">
                       {formatDuration(s.parked_seconds)}
                     </span>
+                    {activeTariff && <PaidBadge session={s} tariff={activeTariff} />}
                   </div>
-                  {activeTariff && (
-                    <span className="font-mono text-sm font-semibold text-ink">
-                      {formatMoney(
-                        estimatePrice(s.parked_seconds ?? 0, activeTariff),
-                        activeTariff.currency,
-                      )}
-                    </span>
-                  )}
                 </div>
               ))}
             </div>
@@ -322,9 +334,8 @@ export function StudioPage() {
                     )}
                   </div>
                   <button
-                    onClick={() => payFor(s)}
-                    disabled={paying}
-                    className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+                    onClick={() => setPayTarget({ session: s, due })}
+                    className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-dark"
                   >
                     Оплатить
                   </button>
@@ -501,7 +512,60 @@ export function StudioPage() {
       </div>
         </div>
       )}
+
+      {/* Окно оплаты (QR + mock-кнопка) — как на странице /pay */}
+      {payTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-ink/50 backdrop-blur-sm"
+            onClick={() => !paying && setPayTarget(null)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl bg-surface p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="eyebrow">Оплата парковки</div>
+              <button
+                onClick={() => setPayTarget(null)}
+                disabled={paying}
+                className="text-lg text-ink-500/50 transition hover:text-ink disabled:opacity-40"
+              >
+                ✕
+              </button>
+            </div>
+            <PaymentPanel
+              plate={payTarget.session.plate_number}
+              amount={payTarget.due}
+              paidAmount={payTarget.session.paid_amount}
+              onPay={() => payFor(payTarget.session)}
+              paying={paying}
+            />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+// Бейдж «оплачено / не оплачено» для карточки авто на парковке.
+function PaidBadge({ session, tariff }: { session: ParkingSession; tariff: Tariff }) {
+  const due = amountDue(session, tariff);
+  if (due > 0.009) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+        ● не оплачено
+      </span>
+    );
+  }
+  if (session.paid_amount > 0) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+        ✓ оплачено
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+      бесплатно
+    </span>
   );
 }
 

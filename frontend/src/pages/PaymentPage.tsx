@@ -5,8 +5,9 @@ import {
   useSession,
   useTariffs,
 } from "../api/hooks";
+import { PaymentPanel } from "../components/PaymentPanel";
 import { PlateReadout } from "../components/PlateReadout";
-import { amountDue, formatMoney } from "../lib/tariff";
+import { amountDue } from "../lib/tariff";
 
 export function PaymentPage() {
   const { sessionId } = useParams();
@@ -43,49 +44,28 @@ export function PaymentPage() {
         </h2>
       </div>
 
-      <div className="card space-y-5 p-6">
+      <div className="card p-6">
         {session.isLoading ? (
           <p className="py-6 text-center text-ink-500/50">Загрузка…</p>
         ) : !s ? (
           <p className="py-6 text-center text-rose-500">Сессия не найдена</p>
-        ) : (
-          <>
-            <div className="flex flex-col items-center gap-4">
-              <PlateReadout plate={s.plate_number} size="lg" />
-              <div className="text-center">
-                <div className="eyebrow">К оплате</div>
-                <div className="font-display text-3xl font-bold text-ink">
-                  {formatMoney(due)}
-                </div>
-                {s.paid_amount > 0 && due > 0 && (
-                  <div className="mt-1 text-xs text-ink-500/60">
-                    доплата · уже оплачено {formatMoney(s.paid_amount)}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {s.status === "paid" || due <= 0 ? (
-              <p className="rounded-lg bg-emerald-50 py-3 text-center text-sm font-medium text-emerald-700">
-                {s.status === "paid"
-                  ? "Оплачено ✓"
-                  : "Долга нет — можно выезжать ✓"}
-              </p>
-            ) : (
-              <button
-                onClick={pay}
-                disabled={paying}
-                className="w-full rounded-lg bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50"
-              >
-                {paying ? "Оплата…" : "Оплатить"}
-              </button>
-            )}
-
-            <p className="text-center text-xs text-ink-500/50">
-              Демо-оплата без реального провайдера (Kaspi / Freedom подключаются
-              позже по тому же интерфейсу).
+        ) : s.status === "paid" || due <= 0 ? (
+          <div className="flex flex-col items-center gap-4 py-2">
+            <PlateReadout plate={s.plate_number} size="lg" />
+            <p className="rounded-lg bg-emerald-50 px-4 py-3 text-center text-sm font-medium text-emerald-700">
+              {s.status === "paid"
+                ? "Оплачено ✓"
+                : "Долга нет — можно выезжать ✓"}
             </p>
-          </>
+          </div>
+        ) : (
+          <PaymentPanel
+            plate={s.plate_number}
+            amount={due}
+            paidAmount={s.paid_amount}
+            onPay={pay}
+            paying={paying}
+          />
         )}
       </div>
     </div>

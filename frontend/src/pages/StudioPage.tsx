@@ -43,6 +43,7 @@ interface LogRow {
   sessionId: number | null;
   amount?: number;
   error?: string;
+  note?: string;
 }
 
 function randomKzPlate(): string {
@@ -55,6 +56,15 @@ function randomKzPlate(): string {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Пресеты «машина уже стоит N» — для теста неоплаченных сессий.
+const BACKDATE_PRESETS: { label: string; min: number }[] = [
+  { label: "Сейчас", min: 0 },
+  { label: "30 мин", min: 30 },
+  { label: "2 ч", min: 120 },
+  { label: "5 ч", min: 300 },
+  { label: "1 сутки", min: 1440 },
+];
 
 export function StudioPage() {
   const qc = useQueryClient();
@@ -74,6 +84,8 @@ export function StudioPage() {
 
   const [plate, setPlate] = useState("127AST02");
   const [confidence, setConfidence] = useState(0.95);
+  // «Стоит уже» — на сколько минут состарить въезд (0 = сейчас)
+  const [backMin, setBackMin] = useState(0);
   const [log, setLog] = useState<LogRow[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -116,19 +128,32 @@ export function StudioPage() {
     });
   };
 
-  async function fire(p: string, dir: Direction, conf = confidence) {
+  async function fire(
+    p: string,
+    dir: Direction,
+    conf = confidence,
+    backMinutes = 0,
+  ) {
+    // Въезд можно «состарить»: entry_time = сейчас − backMinutes → сразу долг.
+    // Выезд всегда «сейчас» (иначе выезд оказался бы раньше въезда).
+    const at =
+      dir === "ENTRY" && backMinutes > 0
+        ? new Date(Date.now() - backMinutes * 60_000)
+        : undefined;
     try {
       const res = await sendAnprEvent({
         plateNumber: p,
         direction: dir,
         confidence: conf,
         deviceName: "Студия",
+        at,
       });
       pushLog({
         plate: p,
         direction: dir,
         action: res.session_action,
         sessionId: res.session_id,
+        note: at ? `стоит ${formatDuration(backMinutes * 60)}` : undefined,
       });
     } catch (e) {
       pushLog({
@@ -386,15 +411,70 @@ export function StudioPage() {
             />
           </label>
 
+          <div className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-ink-500/70">
+              Стоит уже{" "}
+              <span className="text-ink-500/50">
+                (применяется к въезду — для теста неоплаченных)
+              </span>
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {BACKDATE_PRESETS.map((p) => (
+                <button
+                  key={p.min}
+                  onClick={() => setBackMin(p.min)}
+                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+                    backMin === p.min
+                      ? "bg-sky text-white"
+                      : "border border-line text-ink-600 hover:border-sky"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <label className="ml-auto flex items-center gap-1 text-xs text-ink-500/60">
+                <input
+                  type="number"
+                  min={0}
+                  value={backMin}
+                  onChange={(e) =>
+                    setBackMin(Math.max(0, Math.floor(Number(e.target.value) || 0)))
+                  }
+                  className="input w-20 py-1 font-mono"
+                />
+                мин
+              </label>
+            </div>
+            {backMin > 0 && (
+              <p className="mt-1.5 text-xs text-amber-600">
+                Въезд запишется задним числом на {formatDuration(backMin * 60)}
+                {activeTariff && (
+                  <>
+                    {" "}
+                    → сразу долг ≈{" "}
+                    <span className="font-mono font-semibold">
+                      {formatMoney(
+                        estimatePrice(backMin * 60, activeTariff),
+                        activeTariff.currency,
+                      )}
+                    </span>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() =>
-                run(() => fire(plate.trim().toUpperCase(), "ENTRY"))
+                run(() =>
+                  fire(plate.trim().toUpperCase(), "ENTRY", confidence, backMin),
+                )
               }
               disabled={busy || !plate.trim()}
               className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
             >
-              Въезд
+              Въезд{backMin > 0 ? " (задним числом)" : ""}
             </button>
             <button
               onClick={() => run(() => fire(plate.trim().toUpperCase(), "EXIT"))}
@@ -410,21 +490,36 @@ export function StudioPage() {
           <div className="eyebrow">Быстрые сценарии · 1 клик</div>
           <div className="space-y-2">
             <Scenario
-              label="Въезд → Выезд (полный цикл)"
+              label={
+                backMin > 0
+                  ? `Въезд (−${formatDuration(backMin * 60)}) → Выезд — упрётся в долг`
+                  : "Въезд → Выезд (полный цикл)"
+              }
               busy={busy}
               onClick={() =>
                 run(async () => {
                   const p = randomKzPlate();
-                  await fire(p, "ENTRY");
+                  await fire(p, "ENTRY", confidence, backMin);
                   await sleep(900);
                   await fire(p, "EXIT");
                 })
               }
             />
             <Scenario
-              label="Только въезд (оставить на парковке)"
+              label={
+                backMin > 0
+                  ? `Только въезд — стоит уже ${formatDuration(backMin * 60)}`
+                  : "Только въезд (оставить на парковке)"
+              }
               busy={busy}
-              onClick={() => run(() => fire(randomKzPlate(), "ENTRY"))}
+              onClick={() =>
+                run(() => fire(randomKzPlate(), "ENTRY", confidence, backMin))
+              }
+            />
+            <Scenario
+              label="Неоплаченная машина (стоит 2 ч)"
+              busy={busy}
+              onClick={() => run(() => fire(randomKzPlate(), "ENTRY", 0.95, 120))}
             />
             <Scenario
               label="Выезд без въезда"
@@ -438,8 +533,9 @@ export function StudioPage() {
             />
           </div>
           <p className="text-xs text-ink-500/60">
-            Сценарии используют случайные номера. Результат — в логе ниже и на
-            «Сейчас на парковке».
+            Сценарии используют случайные номера. «Стоит уже» выше задаёт, на
+            сколько состарить въезд. Результат — в логе ниже и на «Сейчас на
+            парковке».
           </p>
         </div>
       </div>
@@ -482,6 +578,11 @@ export function StudioPage() {
                 {row.direction && (
                   <span className="text-sm text-ink-500/70">
                     {row.direction === "ENTRY" ? "Въезд" : "Выезд"}
+                  </span>
+                )}
+                {row.note && (
+                  <span className="rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[11px] text-amber-700">
+                    {row.note}
                   </span>
                 )}
                 {row.amount != null && (

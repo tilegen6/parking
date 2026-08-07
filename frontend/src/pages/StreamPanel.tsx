@@ -19,6 +19,10 @@ const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
   created: { label: "въезд · сессия создана", cls: "bg-emerald-100 text-emerald-700" },
   closed: { label: "выезд · сессия закрыта", cls: "bg-sky-100 text-sky-700" },
   updated_last_seen: { label: "дубль въезда", cls: "bg-amber-100 text-amber-700" },
+  entry_restarted: {
+    label: "⏱ старт сдвинут (дубль у шлагбаума)",
+    cls: "bg-amber-100 text-amber-700",
+  },
   duplicate_exit: { label: "дубль выезда", cls: "bg-amber-100 text-amber-700" },
   exit_denied_unpaid: {
     label: "🚧 выезд заблокирован — нужна оплата",

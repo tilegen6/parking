@@ -135,6 +135,8 @@ export interface Payment {
   status: PaymentStatus;
   provider: string;
   provider_payment_id: string;
+  provider_txn_id: string | null;
+  error_code: string | null;
   pay_url: string | null;
   paid_at: string | null;
   created_at: string;
@@ -145,4 +147,35 @@ export interface BillingStats {
   revenue_today: number;
   unpaid_count: number;
   avg_parked_seconds: number | null;
+}
+
+// Kaspi (соответствует src/modules/kaspi.py)
+
+// Статус интеграции (GET /api/v1/kaspi/info)
+export interface KaspiInfo {
+  payment_provider: string; // mock | kaspi
+  provider_enabled: boolean;
+  autopay_enabled: boolean;
+}
+
+// Ответ онлайн-протокола (GET /api/kaspi/pay, format=json)
+// result: 0 ok · 1 не найдено · 2 отменён · 3 уже оплачено · 4 в обработке · 5 ошибка
+export interface KaspiPayResponse {
+  txn_id: string;
+  result: number;
+  sum?: string;
+  prv_txn_id?: string;
+  comment?: string;
+}
+
+// Пробное автосписание при выезде (POST /api/v1/kaspi/autopay/simulate-exit)
+export interface KaspiSimulateExit {
+  session_id: number;
+  plate: string;
+  amount: number;
+  is_success: boolean;
+  transaction_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  autopay_enabled: boolean;
 }

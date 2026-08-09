@@ -6,13 +6,12 @@ from datetime import date, datetime, time, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import hikvision
 from src.database import get_session
 from src.models import Camera, RecognitionEvent
-from src.modules import session as session_service
 from src.schemas import PaginatedEvents, RecognitionEventOut
 from src.storage import storage
 
@@ -80,7 +79,7 @@ async def _read_event(request: Request) -> hikvision.ParsedEvent:
 async def receive_anpr_event(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> dict[str, object]:
+) -> dict:
     """Принять событие распознавания от камеры Hikvision и сохранить его."""
     event = await _read_event(request)
     logger.info(
@@ -118,16 +117,7 @@ async def receive_anpr_event(
     session.add(record)
     await session.flush()
 
-    # Применить событие к парковочным сессиям (ENTRY/EXIT/дедуп/аномалии)
-    result = await session_service.handle_recognition_event(session, record)
-
-    return {
-        "status": "ok",
-        "id": record.id,
-        "plate_number": record.plate_number,
-        "session_action": result.action,
-        "session_id": result.session_id,
-    }
+    return {"status": "ok", "id": record.id, "plate_number": record.plate_number}
 
 
 @router.get("/recognition/events", response_model=PaginatedEvents)
@@ -144,7 +134,7 @@ async def list_events(
     date_to: date | None = Query(None),
 ) -> PaginatedEvents:
     """Список событий распознавания с пагинацией и фильтрами (для таблицы в админке)."""
-    conditions: list[ColumnElement[bool]] = []
+    conditions = []
     if plate:
         conditions.append(RecognitionEvent.plate_number.ilike(f"%{plate}%"))
     if direction:

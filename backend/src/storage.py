@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 def _public_read_policy(bucket: str) -> str:
-    """Политика анонимного чтения объектов — чтобы фото открывались в <img>."""
+    """Политика анонимного чтения объектов — чтобы фото открывались на фронте."""
     return json.dumps(
         {
             "Version": "2012-10-17",

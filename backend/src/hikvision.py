@@ -98,7 +98,7 @@ def parse_xml(payload: bytes | str) -> ParsedEvent:
     return event
 
 
-def parse_json(data: dict[str, object]) -> ParsedEvent:
+def parse_json(data: dict) -> ParsedEvent:
     """Разобрать JSON-событие (плоский или вложенный в ANPR/AccessControllerEvent)."""
     import json
 
@@ -140,7 +140,7 @@ def parse_json(data: dict[str, object]) -> ParsedEvent:
     conf = pick("confidenceLevel", "confidence")
     if conf is not None:
         try:
-            value = float(str(conf))
+            value = float(conf)
             event.confidence = value / 100 if value > 1 else value
         except (ValueError, TypeError):
             pass

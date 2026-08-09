@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from src.config import settings
 from src.database import engine
-from src.modules import camera, recognition, session
+from src.modules import camera, recognition
 from src.storage import storage
 
 logging.basicConfig(
@@ -61,7 +61,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 @app.get("/health", tags=["system"])
-async def health() -> dict[str, object]:
+async def health() -> dict:
     """Health check для DevOps / Nginx / Docker."""
     db_ok = True
     try:
@@ -75,4 +75,3 @@ async def health() -> dict[str, object]:
 app.include_router(recognition.router)
 app.include_router(camera.router)
 app.include_router(camera.dashboard_router)
-app.include_router(session.router)

@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.env
 .venv
 pip-log.txt
 pip-delete-this-directory.txt
@@ -24,17 +25,9 @@ htmlcov/
 *.swp
 *.swo
 
-# Секреты окружения — НЕ коммитим, но шаблон .env.example оставляем
-.env
-.env.*
-!.env.example
-
 # Docker и Локальные базы данных
 .docker-volumes/
 postgres_data/
-
-# Временные файлы
-*.tmp
 
 # OS файлы
 .DS_Store

@@ -166,6 +166,37 @@ export function useConfirmPaymentMock() {
   });
 }
 
+// ТС-7: оператор вручную назначает направление событию UNKNOWN
+export function useAssignDirection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      eventId,
+      direction,
+    }: {
+      eventId: number;
+      direction: "ENTRY" | "EXIT";
+    }) =>
+      api.post<{
+        id: number;
+        direction: string;
+        session_action: string;
+        session_id: number | null;
+      }>(`/api/v1/recognition/events/${eventId}/direction`, { direction }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+// ТС-8: ручная отмена зависшей/ошибочной сессии
+export function useCancelSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) =>
+      api.post<ParkingSession>(`/api/v1/parking-sessions/${sessionId}/cancel`, {}),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
 // Kaspi (онлайн-протокол провайдера + автосписание)
 
 /** Статус интеграции Kaspi (активный провайдер, включённые режимы). */

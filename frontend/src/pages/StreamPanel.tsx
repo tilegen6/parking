@@ -23,6 +23,14 @@ const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
     label: "⏱ старт сдвинут (дубль у шлагбаума)",
     cls: "bg-amber-100 text-amber-700",
   },
+  reentry_new_session: {
+    label: "⚠ старая зависла → закрыта, открыта новая",
+    cls: "bg-rose-100 text-rose-700",
+  },
+  possible_misread: {
+    label: "❓ похож на активный номер — проверка",
+    cls: "bg-rose-100 text-rose-700",
+  },
   duplicate_exit: { label: "дубль выезда", cls: "bg-amber-100 text-amber-700" },
   exit_denied_unpaid: {
     label: "🚧 выезд заблокирован — нужна оплата",

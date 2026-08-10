@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useActiveSessions, useSessions } from "../api/hooks";
+import { useActiveSessions, useCancelSession, useSessions } from "../api/hooks";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import type { SessionStatus, SessionsFilters } from "../api/types";
@@ -33,6 +33,7 @@ export function SessionsPage() {
 
   const { data, isLoading, isError, isFetching } = useSessions(filters);
   const active = useActiveSessions();
+  const cancel = useCancelSession();
 
   const resetToFirstPage = () => setPage(1);
   const hasFilters = Boolean(plate || status || dateFrom || dateTo);
@@ -100,6 +101,7 @@ export function SessionsPage() {
             <option value="unpaid">Выехал</option>
             <option value="paid">Оплачено</option>
             <option value="cancelled">Отменена</option>
+            <option value="auto_closed">Закрыта авто</option>
           </select>
         </Field>
         <Field label="С даты">
@@ -193,6 +195,14 @@ export function SessionsPage() {
                   >
                     {sessionStatusLabel[s.status] ?? s.status}
                   </span>
+                  {s.is_stale && (
+                    <span
+                      className="ml-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700"
+                      title="ТС-8: активна дольше 24ч — закрой вручную или разберись"
+                    >
+                      ⚠ зависла 24ч+
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 font-mono text-ink-500/70">
                   {formatDateTime(s.entry_time)}
@@ -208,6 +218,16 @@ export function SessionsPage() {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-3">
+                    {s.is_stale && (
+                      <button
+                        disabled={cancel.isPending}
+                        onClick={() => cancel.mutate(s.id)}
+                        className="text-sm font-medium text-rose-600 transition hover:underline disabled:opacity-50"
+                        title="ТС-8: ручное закрытие зависшей сессии"
+                      >
+                        Отменить
+                      </button>
+                    )}
                     {(s.status === "unpaid" || s.status === "active") && (
                       <Link
                         to={`/pay/${s.id}`}

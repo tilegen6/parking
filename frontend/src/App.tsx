@@ -4,6 +4,7 @@ import { ActiveCarsPage } from "./pages/ActiveCarsPage";
 import { CamerasPage } from "./pages/CamerasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
+import { GatesPage } from "./pages/GatesPage";
 import { PaymentPage } from "./pages/PaymentPage";
 import { PayErrorPage, PaySuccessPage } from "./pages/PayResult";
 import { RecognizePage } from "./pages/RecognizePage";
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="sessions/:id" element={<SessionDetailPage />} />
         <Route path="active" element={<ActiveCarsPage />} />
         <Route path="cameras" element={<CamerasPage />} />
+        <Route path="gates" element={<GatesPage />} />
         <Route path="recognize" element={<RecognizePage />} />
         <Route path="tariffs" element={<TariffsPage />} />
         <Route path="studio" element={<StudioPage />} />

@@ -18,11 +18,24 @@ import { PlateReadout } from "../components/PlateReadout";
 import { formatDuration } from "../lib/format";
 import { amountDue, estimatePrice, formatMoney } from "../lib/tariff";
 import { RecognizePage } from "./RecognizePage";
+import { StreamPanel } from "./StreamPanel";
 
 const ACTION_META: Record<string, { label: string; cls: string }> = {
   created: { label: "создана сессия", cls: "bg-emerald-100 text-emerald-700" },
   closed: { label: "закрыта сессия", cls: "bg-sky-100 text-sky-700" },
   updated_last_seen: { label: "дубль въезда", cls: "bg-amber-100 text-amber-700" },
+  entry_restarted: {
+    label: "⏱ старт сдвинут (дубль у шлагбаума)",
+    cls: "bg-amber-100 text-amber-700",
+  },
+  reentry_new_session: {
+    label: "⚠ старая зависла → закрыта, открыта новая",
+    cls: "bg-rose-100 text-rose-700",
+  },
+  possible_misread: {
+    label: "❓ похож на активный номер — проверка",
+    cls: "bg-rose-100 text-rose-700",
+  },
   duplicate_exit: { label: "дубль выезда", cls: "bg-amber-100 text-amber-700" },
   event_without_session: {
     label: "выезд без сессии",
@@ -325,7 +338,14 @@ export function StudioPage() {
         ))}
       </div>
 
-      {tab === "cv" && <RecognizePage />}
+      {tab === "cv" && (
+        <div className="space-y-8">
+          <StreamPanel />
+          <div className="border-t border-line pt-8">
+            <RecognizePage />
+          </div>
+        </div>
+      )}
 
       {tab === "kpp" && (
         <div className="space-y-6">

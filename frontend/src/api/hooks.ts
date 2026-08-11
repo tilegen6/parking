@@ -6,6 +6,8 @@ import type {
   BillingStats,
   Camera,
   DashboardStats,
+  Gate,
+  GateInput,
   EventsFilters,
   KaspiInfo,
   KaspiPayResponse,
@@ -91,6 +93,49 @@ export function useCreateCamera() {
   });
 }
 
+export function useUpdateCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<Camera> }) =>
+      api.put<Camera>(`/api/v1/cameras/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Шлагбаумы/зоны
+
+export function useGates() {
+  return useQuery({
+    queryKey: ["gates"],
+    queryFn: () => api.get<Gate[]>("/api/v1/gates"),
+  });
+}
+
+export function useCreateGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GateInput) => api.post<Gate>("/api/v1/gates", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+export function useUpdateGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<GateInput> }) =>
+      api.put<Gate>(`/api/v1/gates/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+export function useDeleteGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/gates/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
 // Тарифы
 
 export function useTariffs() {
@@ -162,6 +207,37 @@ export function useConfirmPaymentMock() {
       api.post<Payment>("/api/v1/payments/webhook", {
         provider_payment_id: providerPaymentId,
       }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+// ТС-7: оператор вручную назначает направление событию UNKNOWN
+export function useAssignDirection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      eventId,
+      direction,
+    }: {
+      eventId: number;
+      direction: "ENTRY" | "EXIT";
+    }) =>
+      api.post<{
+        id: number;
+        direction: string;
+        session_action: string;
+        session_id: number | null;
+      }>(`/api/v1/recognition/events/${eventId}/direction`, { direction }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+// ТС-8: ручная отмена зависшей/ошибочной сессии
+export function useCancelSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) =>
+      api.post<ParkingSession>(`/api/v1/parking-sessions/${sessionId}/cancel`, {}),
     onSuccess: () => qc.invalidateQueries(),
   });
 }

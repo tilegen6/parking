@@ -1,11 +1,22 @@
 // TanStack Query хуки для данных backend.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  AuditEntry,
+  AuthUser,
+  UserCreateInput,
+  UserUpdateInput,
+} from "./auth";
 import { api, buildQuery } from "./client";
 import type {
+  AccessEntry,
+  AccessEntryInput,
+  Alert,
   BillingStats,
   Camera,
   DashboardStats,
+  Gate,
+  GateInput,
   EventsFilters,
   KaspiInfo,
   KaspiPayResponse,
@@ -88,6 +99,137 @@ export function useCreateCamera() {
     mutationFn: (payload: Partial<Camera>) =>
       api.post<Camera>("/api/v1/cameras", payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Пользователи и аудит (admin)
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get<AuthUser[]>("/api/v1/users"),
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UserCreateInput) =>
+      api.post<AuthUser>("/api/v1/users", payload),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: UserUpdateInput }) =>
+      api.put<AuthUser>(`/api/v1/users/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useAuditLog() {
+  return useQuery({
+    queryKey: ["audit-log"],
+    queryFn: () => api.get<AuditEntry[]>("/api/v1/audit-log"),
+    refetchInterval: 10000,
+  });
+}
+
+export function useUpdateCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<Camera> }) =>
+      api.put<Camera>(`/api/v1/cameras/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Шлагбаумы/зоны
+
+export function useGates() {
+  return useQuery({
+    queryKey: ["gates"],
+    queryFn: () => api.get<Gate[]>("/api/v1/gates"),
+  });
+}
+
+export function useCreateGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GateInput) => api.post<Gate>("/api/v1/gates", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+export function useUpdateGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<GateInput> }) =>
+      api.put<Gate>(`/api/v1/gates/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+export function useDeleteGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/gates/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+// Списки доступа (green/yellow/red)
+
+export function useAccessEntries() {
+  return useQuery({
+    queryKey: ["access-entries"],
+    queryFn: () => api.get<AccessEntry[]>("/api/v1/access-entries"),
+  });
+}
+
+export function useCreateAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AccessEntryInput) =>
+      api.post<AccessEntry>("/api/v1/access-entries", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+export function useUpdateAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<AccessEntryInput> }) =>
+      api.put<AccessEntry>(`/api/v1/access-entries/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+export function useDeleteAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/access-entries/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+// Оповещения (красный список)
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["alerts"],
+    queryFn: () => api.get<Alert[]>("/api/v1/alerts?only_new=true"),
+    refetchInterval: 8000,
+  });
+}
+
+export function useAckAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<Alert>(`/api/v1/alerts/${id}/ack`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
   });
 }
 

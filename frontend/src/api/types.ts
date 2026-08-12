@@ -39,6 +39,60 @@ export interface Camera {
   type: string | null;
   location: string | null;
   status: string;
+  gate_id: number | null;
+  created_at: string;
+}
+
+// Шлагбаумы/зоны
+export interface Gate {
+  id: number;
+  name: string;
+  zone: string | null;
+  level: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GateInput {
+  name: string;
+  zone?: string | null;
+  level?: number;
+  is_active?: boolean;
+}
+
+// Списки доступа
+export type AccessListType = "green" | "yellow" | "red";
+
+export interface AccessEntry {
+  id: number;
+  plate: string;
+  list_type: AccessListType;
+  gate_id: number | null; // null = на все шлагбаумы
+  valid_until: string | null; // жёлтый: бесплатно до этого момента
+  note: string | null;
+  is_active: boolean;
+  created_by_username: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccessEntryInput {
+  plate: string;
+  list_type: AccessListType;
+  gate_id?: number | null;
+  valid_until?: string | null;
+  note?: string | null;
+  is_active?: boolean;
+}
+
+export interface Alert {
+  id: number;
+  kind: string;
+  plate: string | null;
+  gate_id: number | null;
+  message: string | null;
+  acknowledged: boolean;
   created_at: string;
 }
 
@@ -91,6 +145,12 @@ export interface ParkingSession {
   entry_adjusted: boolean;
   // Активная дольше порога (24ч) — «зависла», ручной разбор (ТС-8)
   is_stale: boolean;
+  // Шлагбаум/зона сессии (null = не привязана)
+  gate_id: number | null;
+  // Способ проезда по спискам: green (бесплатно) / yellow (бесплатно до
+  // free_until) / null (обычная платная)
+  access_type: "green" | "yellow" | null;
+  free_until: string | null;
   entry_event_id: number | null;
   exit_event_id: number | null;
   entry_camera_id: number | null;
@@ -112,6 +172,7 @@ export interface SessionsFilters {
   limit?: number;
   plate?: string;
   status?: SessionStatus | "";
+  gate_id?: number;
   date_from?: string;
   date_to?: string;
 }

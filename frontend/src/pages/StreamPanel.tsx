@@ -11,6 +11,14 @@ import {
   type StreamStatus,
 } from "../api/cv";
 import { PlateReadout } from "../components/PlateReadout";
+import {
+  guessName,
+  loadPresets,
+  maskUrl,
+  newPresetId,
+  savePresets,
+  type StreamPreset,
+} from "../lib/streamPresets";
 
 const CAMERA = "cv-stream";
 
@@ -22,6 +30,10 @@ const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
   entry_restarted: {
     label: "⏱ старт сдвинут (дубль у шлагбаума)",
     cls: "bg-amber-100 text-amber-700",
+  },
+  access_denied_red: {
+    label: "🚫 красный список — не пустили",
+    cls: "bg-rose-100 text-rose-700",
   },
   reentry_new_session: {
     label: "⚠ старая зависла → закрыта, открыта новая",
@@ -53,9 +65,14 @@ export function StreamPanel() {
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [presets, setPresets] = useState<StreamPreset[]>(() => loadPresets());
+  const [nameDraft, setNameDraft] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
   const sinceRef = useRef(0);
 
   const isDemo = url.trim() === "demo";
+
+  useEffect(() => savePresets(presets), [presets]);
 
   useEffect(() => {
     getPipelineVersions()
@@ -101,21 +118,28 @@ export function StreamPanel() {
     };
   }, [active]);
 
-  const start = async () => {
+  // Запуск: либо по полям формы, либо сразу по сохранённому подключению
+  // (значения берём из пресета, а не из state — setState асинхронный).
+  const start = async (preset?: StreamPreset) => {
+    const target = (preset?.url ?? url).trim();
+    const dir = preset?.direction ?? direction;
     setBusy(true);
     setError(null);
     setEvents([]);
     setPreview(null);
     sinceRef.current = 0;
     try {
-      const ver = isDemo ? "template" : version; // синтетика работает на template
+      // синтетика работает на template
+      const ver =
+        target === "demo" ? "template" : (preset?.version ?? version);
       await startStream({
-        url: url.trim(),
-        direction,
+        url: target,
+        direction: dir,
         camera_name: CAMERA,
         version: ver,
       });
       setActive(true);
+      setActiveId(preset?.id ?? presets.find((p) => p.url === target)?.id ?? null);
     } catch (e) {
       setError(
         e instanceof Error
@@ -135,8 +159,48 @@ export function StreamPanel() {
       /* уже остановлен */
     }
     setActive(false);
+    setActiveId(null);
     setBusy(false);
   };
+
+  // ── Сохранённые подключения ───────────────────────────────────────────
+
+  /** Перенести пресет в поля формы (можно поправить перед стартом). */
+  const applyPreset = (p: StreamPreset) => {
+    setUrl(p.url);
+    setDirection(p.direction);
+    setVersion(p.version);
+    setNameDraft(p.name);
+  };
+
+  /** Подключиться к сохранённому в один клик. */
+  const connectPreset = async (p: StreamPreset) => {
+    applyPreset(p);
+    await start(p);
+  };
+
+  /** Сохранить то, что сейчас в полях. Тот же URL — обновляем, а не плодим. */
+  const saveCurrent = () => {
+    const value = url.trim();
+    if (!value) return;
+    const name = nameDraft.trim() || guessName(value);
+    const ver = value === "demo" ? "template" : version;
+    setPresets((list) => {
+      const existing = list.find((p) => p.url === value);
+      if (existing) {
+        return list.map((p) =>
+          p.id === existing.id
+            ? { ...p, name, direction, version: ver }
+            : p,
+        );
+      }
+      return [...list, { id: newPresetId(), name, url: value, direction, version: ver }];
+    });
+    setNameDraft("");
+  };
+
+  const removePreset = (id: string) =>
+    setPresets((list) => list.filter((p) => p.id !== id));
 
   return (
     <div className="space-y-5">
@@ -147,12 +211,90 @@ export function StreamPanel() {
         </h2>
         <p className="mt-1 text-sm text-ink-500/70">
           CV читает поток, трекает машину и шлёт <b>одно</b> событие на проезд (не
-          спамит, пока едет). Телефон как камера: приложение «IP Webcam» →{" "}
+          спамит, пока едет). Телефон как камера: DroidCam →{" "}
           <code className="rounded bg-paper px-1 py-0.5 font-mono text-xs">
-            http://&lt;ip-телефона&gt;:8080/video
+            http://&lt;ip-телефона&gt;:4747/video
           </code>
-          . Без камеры — оставь <code className="font-mono text-xs">demo</code>.
+          , IP Webcam → порт <code className="font-mono text-xs">8080</code>. Без
+          камеры — оставь <code className="font-mono text-xs">demo</code>.
         </p>
+      </div>
+
+      {/* Сохранённые подключения */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between px-1">
+          <div className="eyebrow">Сохранённые подключения</div>
+          <span className="text-[11px] text-ink-500/50">
+            хранятся в этом браузере
+          </span>
+        </div>
+
+        {presets.length === 0 ? (
+          <p className="px-1 py-4 text-sm text-ink-500/50">
+            Пока пусто — впиши URL ниже, дай название и нажми «Сохранить».
+          </p>
+        ) : (
+          <ul className="mt-2 divide-y divide-line">
+            {presets.map((p) => {
+              const live = active && activeId === p.id;
+              return (
+                <li key={p.id} className="flex items-center gap-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-ink">
+                        {p.name}
+                      </span>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                          p.direction === "entry"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-sky-100 text-sky-700"
+                        }`}
+                      >
+                        {p.direction === "entry" ? "Въезд" : "Выезд"}
+                      </span>
+                      {live && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          </span>
+                          подключено
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate font-mono text-xs text-ink-500/50">
+                      {maskUrl(p.url)}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => applyPreset(p)}
+                    className="rounded-lg border border-line px-2.5 py-1.5 text-xs text-ink-600 transition hover:border-sky"
+                    title="Подставить в поля — можно поправить перед стартом"
+                  >
+                    Подставить
+                  </button>
+                  <button
+                    onClick={() => void connectPreset(p)}
+                    disabled={busy || active}
+                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-40"
+                  >
+                    ▶ Подключить
+                  </button>
+                  <button
+                    onClick={() => removePreset(p.id)}
+                    disabled={live}
+                    className="rounded-lg px-2 py-1.5 text-sm text-ink-500/40 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                    title="Удалить"
+                  >
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       {/* Управление */}
@@ -169,6 +311,28 @@ export function StreamPanel() {
             className="w-full rounded-lg border border-line bg-paper px-3 py-2 font-mono text-sm text-ink transition focus:border-sky focus:outline-none disabled:opacity-60"
           />
         </label>
+
+        {/* Сохранение текущего URL в закладки */}
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[200px] flex-1">
+            <span className="mb-1 block text-xs font-medium text-ink-500/70">
+              Название (как назвать это подключение)
+            </span>
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              placeholder="Телефон · DroidCam"
+              className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink transition focus:border-sky focus:outline-none"
+            />
+          </label>
+          <button
+            onClick={saveCurrent}
+            disabled={!url.trim()}
+            className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-ink-600 transition hover:border-sky disabled:opacity-40"
+          >
+            💾 Сохранить
+          </button>
+        </div>
 
         <div className="flex flex-wrap items-end gap-4">
           <label className="block">
@@ -214,7 +378,7 @@ export function StreamPanel() {
             {error && <span className="text-sm text-rose-500">{error}</span>}
             {!active ? (
               <button
-                onClick={start}
+                onClick={() => void start()}
                 disabled={busy || !url.trim()}
                 className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
               >

@@ -1,16 +1,34 @@
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-const links = [
+type NavItem = { to: string; label: string; icon: string; end?: boolean };
+
+const links: NavItem[] = [
   { to: "/", label: "Дашборд", icon: "▦", end: true },
   { to: "/events", label: "События", icon: "◎" },
   { to: "/sessions", label: "Сессии", icon: "▤" },
   { to: "/active", label: "На парковке", icon: "▣" },
   { to: "/tariffs", label: "Тарифы", icon: "₸" },
+  { to: "/gates", label: "Шлагбаумы", icon: "⊟" },
   { to: "/cameras", label: "Камеры", icon: "▷" },
   { to: "/studio", label: "Студия", icon: "⚙" },
 ];
 
+// Ведение списков — list_manager и admin
+const managerLinks: NavItem[] = [
+  { to: "/access-lists", label: "Списки", icon: "◑" },
+];
+// Пункты только для администратора
+const adminLinks: NavItem[] = [{ to: "/users", label: "Пользователи", icon: "◍" }];
+
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+  const { user } = useAuth();
+  const role = user?.role;
+  const items: NavItem[] = [
+    ...links,
+    ...(role === "admin" || role === "list_manager" ? managerLinks : []),
+    ...(role === "admin" ? adminLinks : []),
+  ];
   return (
     <>
       <div className="flex h-16 items-center gap-3 border-b border-white/5 px-5">
@@ -33,7 +51,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-5">
-        {links.map((link) => (
+        {items.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}

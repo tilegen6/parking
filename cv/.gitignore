@@ -1,0 +1,9 @@
+# Captured raw camera payloads — never commit (may contain plates/photos)
+captures/*
+!captures/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/

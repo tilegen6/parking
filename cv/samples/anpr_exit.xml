@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Эталон: ANPR-событие ВЫЕЗД (direction=reverse) от iDS-2CD7A46G0/P-IZHSY.
+  Та же машина, что в anpr_entry.xml, спустя время — для проверки ENTRY→EXIT.
+-->
+<EventNotificationAlert version="2.0" xmlns="http://www.hikvision.com/ver20/XMLSchema">
+    <ipAddress>192.168.1.65</ipAddress>
+    <portNo>80</portNo>
+    <protocol>HTTP</protocol>
+    <macAddress>c0:51:7e:00:33:44</macAddress>
+    <channelID>1</channelID>
+    <dateTime>2026-06-13T12:48:05+05:00</dateTime>
+    <activePostCount>1</activePostCount>
+    <eventType>ANPR</eventType>
+    <eventState>active</eventState>
+    <eventDescription>ANPR</eventDescription>
+    <channelName>Exit_Camera</channelName>
+    <ANPR>
+        <country>0</country>
+        <licensePlate>123ABC02</licensePlate>
+        <line>1</line>
+        <direction>reverse</direction>
+        <confidenceLevel>91</confidenceLevel>
+        <plateType>unknown</plateType>
+        <plateColor>white</plateColor>
+        <licenseBright>0</licenseBright>
+        <picName>licensePlatePicture.jpg</picName>
+        <vehicleInfo>
+            <index>0</index>
+            <colorDepth>0</colorDepth>
+            <color>white</color>
+            <length>0</length>
+            <vehicleLogoRecog>0</vehicleLogoRecog>
+            <vehicleType>saloonCar</vehicleType>
+        </vehicleInfo>
+    </ANPR>
+</EventNotificationAlert>

@@ -1,10 +1,12 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { useAuth } from "./context/AuthContext";
 import { ActiveCarsPage } from "./pages/ActiveCarsPage";
 import { CamerasPage } from "./pages/CamerasPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EventsPage } from "./pages/EventsPage";
 import { GatesPage } from "./pages/GatesPage";
+import { LoginPage } from "./pages/LoginPage";
 import { PaymentPage } from "./pages/PaymentPage";
 import { PayErrorPage, PaySuccessPage } from "./pages/PayResult";
 import { RecognizePage } from "./pages/RecognizePage";
@@ -13,8 +15,24 @@ import { SessionsPage } from "./pages/SessionsPage";
 import { SimulatorPage } from "./pages/SimulatorPage";
 import { StudioPage } from "./pages/StudioPage";
 import { TariffsPage } from "./pages/TariffsPage";
+import { UsersPage } from "./pages/UsersPage";
 
 export default function App() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-ink text-sm text-slate-400">
+        Загрузка…
+      </div>
+    );
+  }
+
+  // Не авторизован — только экран входа (админ-панель за логином)
+  if (!user) return <LoginPage />;
+
+  const isAdmin = user.role === "admin";
+
   return (
     <Routes>
       <Route element={<Layout />}>
@@ -29,6 +47,7 @@ export default function App() {
         <Route path="tariffs" element={<TariffsPage />} />
         <Route path="studio" element={<StudioPage />} />
         <Route path="simulator" element={<SimulatorPage />} />
+        {isAdmin && <Route path="users" element={<UsersPage />} />}
         <Route path="pay/success" element={<PaySuccessPage />} />
         <Route path="pay/error" element={<PayErrorPage />} />
         <Route path="pay/:sessionId" element={<PaymentPage />} />

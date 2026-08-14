@@ -1,6 +1,9 @@
 import { NavLink } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
-const links = [
+type NavItem = { to: string; label: string; icon: string; end?: boolean };
+
+const links: NavItem[] = [
   { to: "/", label: "Дашборд", icon: "▦", end: true },
   { to: "/events", label: "События", icon: "◎" },
   { to: "/sessions", label: "Сессии", icon: "▤" },
@@ -11,7 +14,13 @@ const links = [
   { to: "/studio", label: "Студия", icon: "⚙" },
 ];
 
+// Пункты только для администратора
+const adminLinks: NavItem[] = [{ to: "/users", label: "Пользователи", icon: "◍" }];
+
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
+  const { user } = useAuth();
+  const items =
+    user?.role === "admin" ? [...links, ...adminLinks] : links;
   return (
     <>
       <div className="flex h-16 items-center gap-3 border-b border-white/5 px-5">
@@ -34,7 +43,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-5">
-        {links.map((link) => (
+        {items.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}

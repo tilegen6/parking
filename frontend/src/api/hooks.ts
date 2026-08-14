@@ -1,6 +1,12 @@
 // TanStack Query хуки для данных backend.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  AuditEntry,
+  AuthUser,
+  UserCreateInput,
+  UserUpdateInput,
+} from "./auth";
 import { api, buildQuery } from "./client";
 import type {
   BillingStats,
@@ -90,6 +96,41 @@ export function useCreateCamera() {
     mutationFn: (payload: Partial<Camera>) =>
       api.post<Camera>("/api/v1/cameras", payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Пользователи и аудит (admin)
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get<AuthUser[]>("/api/v1/users"),
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UserCreateInput) =>
+      api.post<AuthUser>("/api/v1/users", payload),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: UserUpdateInput }) =>
+      api.put<AuthUser>(`/api/v1/users/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useAuditLog() {
+  return useQuery({
+    queryKey: ["audit-log"],
+    queryFn: () => api.get<AuditEntry[]>("/api/v1/audit-log"),
+    refetchInterval: 10000,
   });
 }
 

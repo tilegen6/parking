@@ -1,9 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useDashboardStats } from "../api/hooks";
+import { useAuth } from "../context/AuthContext";
+
+const ROLE_SHORT: Record<string, string> = {
+  admin: "админ",
+  operator: "оператор",
+  list_manager: "списки",
+};
 
 export function Header({ onMenu }: { onMenu?: () => void }) {
   const qc = useQueryClient();
   const { data, isError, isFetching } = useDashboardStats();
+  const { user, logout } = useAuth();
 
   const backendOnline = !isError && data !== undefined;
   const camerasOnline = data?.cameras_online ?? 0;
@@ -38,6 +46,23 @@ export function Header({ onMenu }: { onMenu?: () => void }) {
         >
           {isFetching ? "Обновление…" : "↻ Обновить"}
         </button>
+        {user && (
+          <div className="flex items-center gap-2 border-l border-line pl-2.5">
+            <div className="hidden text-right leading-tight sm:block">
+              <div className="text-sm font-medium text-ink">{user.username}</div>
+              <div className="font-mono text-[10px] uppercase tracking-wider text-ink-500/50">
+                {ROLE_SHORT[user.role] ?? user.role}
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              title="Выйти"
+              className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-600 transition hover:border-rose-300 hover:text-rose-600"
+            >
+              Выйти
+            </button>
+          </div>
+        )}
       </div>
     </header>
   );

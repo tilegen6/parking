@@ -14,6 +14,8 @@ import type {
   Alert,
   BillingStats,
   Camera,
+  CameraCheckResult,
+  CameraInput,
   DashboardStats,
   Gate,
   GateInput,
@@ -96,8 +98,42 @@ export function useSession(id: number) {
 export function useCreateCamera() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: Partial<Camera>) =>
+    mutationFn: (payload: CameraInput) =>
       api.post<Camera>("/api/v1/cameras", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+export function useDeleteCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/cameras/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+/** Проверка связи с камерой: TCP-проба порта, обновляет статус online/offline. */
+export function useCheckCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      api.post<CameraCheckResult>(`/api/v1/cameras/${id}/check`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+/**
+ * Запуск/остановка распознавания потока камеры в CV.
+ * URL с паролем собирает бэкенд — в браузер пароль не попадает.
+ */
+export function useCameraStream() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; action: "start" | "stop" }) =>
+      api.post<Record<string, unknown>>(
+        `/api/v1/cameras/${args.id}/stream/${args.action}`,
+        {},
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
   });
 }
@@ -140,7 +176,7 @@ export function useAuditLog() {
 export function useUpdateCamera() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (args: { id: number; patch: Partial<Camera> }) =>
+    mutationFn: (args: { id: number; patch: CameraInput }) =>
       api.put<Camera>(`/api/v1/cameras/${args.id}`, args.patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
   });

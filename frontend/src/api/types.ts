@@ -40,7 +40,40 @@ export interface Camera {
   location: string | null;
   status: string;
   gate_id: number | null;
+  /** Какое направление снимает камера — для RTSP это единственный источник. */
+  direction: "entry" | "exit" | null;
+  username: string | null;
+  rtsp_port: number;
+  stream_path: string | null;
+  stream_url: string | null;
+  last_seen_at: string | null;
   created_at: string;
+  /** Пароль наружу не отдаётся — только признак и URL с маской. */
+  has_password: boolean;
+  stream_url_display: string | null;
+}
+
+/** Поля, которые форма отправляет на бэкенд (пароль — только на запись). */
+export interface CameraInput {
+  name?: string;
+  ip_address?: string | null;
+  type?: string | null;
+  location?: string | null;
+  gate_id?: number | null;
+  direction?: "entry" | "exit" | null;
+  username?: string | null;
+  password?: string | null;
+  rtsp_port?: number;
+  stream_path?: string | null;
+  stream_url?: string | null;
+}
+
+export interface CameraCheckResult {
+  camera_id: number;
+  reachable: boolean;
+  status: string;
+  target: string | null;
+  detail: string | null;
 }
 
 // Шлагбаумы/зоны

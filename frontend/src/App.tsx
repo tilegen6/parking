@@ -47,8 +47,9 @@ export default function App() {
         <Route path="gates" element={<GatesPage />} />
         <Route path="recognize" element={<RecognizePage />} />
         <Route path="tariffs" element={<TariffsPage />} />
-        <Route path="studio" element={<StudioPage />} />
-        <Route path="simulator" element={<SimulatorPage />} />
+        {/* Тестовый стенд создаёт настоящие сессии — только админу */}
+        {isAdmin && <Route path="studio" element={<StudioPage />} />}
+        {isAdmin && <Route path="simulator" element={<SimulatorPage />} />}
         {canManageLists && (
           <Route path="access-lists" element={<AccessListsPage />} />
         )}

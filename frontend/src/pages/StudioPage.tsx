@@ -213,7 +213,14 @@ export function StudioPage() {
   // Уникальный txn_id для эмуляции запросов Kaspi (одинаковый → проверка идемпотентности)
   const genTxn = () =>
     `${Date.now()}${Math.floor(Math.random() * 1000)}`;
-  const errMsg = (e: unknown) => (e instanceof Error ? e.message : "ошибка");
+  // «Not Found» от /api/kaspi/pay значит не «нет сессии», а «роут не поднят»:
+  // бэкенд регистрирует онлайн-протокол только при KASPI_PROVIDER_ENABLED.
+  const errMsg = (e: unknown) => {
+    const raw = e instanceof Error ? e.message : "ошибка";
+    return /not found/i.test(raw)
+      ? "онлайн-протокол Kaspi выключен на бэкенде (KASPI_PROVIDER_ENABLED)"
+      : raw;
+  };
 
   // Kaspi online: check — узнать сумму долга по номеру (эмулируем запрос Kaspi)
   const kaspiDoCheck = (s: ParkingSession) =>
@@ -300,6 +307,10 @@ export function StudioPage() {
         });
       }
     });
+
+  // Онлайн-протокол Kaspi поднят только при KASPI_PROVIDER_ENABLED — иначе
+  // роут /api/kaspi/pay не существует и кнопки бессмысленны.
+  const kaspiOnline = kaspiInfo.data?.provider_enabled ?? false;
 
   const cars = parking.data ?? [];
   // Должники: машины на парковке, у которых есть незакрытый долг по тарифу
@@ -723,6 +734,19 @@ export function StudioPage() {
               <b>pay</b> — провести оплату (идемпотентно: повтор с тем же txn_id
               не спишет дважды).
             </p>
+
+            {kaspiInfo.data && !kaspiInfo.data.provider_enabled && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                <b>Онлайн-протокол выключен</b> — сейчас провайдер{" "}
+                <span className="font-mono">{kaspiInfo.data.payment_provider}</span>.
+                Бэкенд поднимает роут{" "}
+                <span className="font-mono">/api/kaspi/pay</span> только при{" "}
+                <span className="font-mono">KASPI_PROVIDER_ENABLED=true</span>, поэтому
+                check/pay сейчас вернут 404. Для сквозного теста оплаты пользуйся
+                вкладкой «Эмуляция КПП» → <b>Оплатить</b> (mock-провайдер).
+              </div>
+            )}
+
             <div className="mt-4">
               {owing.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">
@@ -744,14 +768,20 @@ export function StudioPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => kaspiDoCheck(s)}
-                          disabled={busy}
+                          disabled={busy || !kaspiOnline}
+                          title={
+                            kaspiOnline ? undefined : "Онлайн-протокол Kaspi выключен"
+                          }
                           className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink transition hover:border-sky disabled:opacity-50"
                         >
                           check
                         </button>
                         <button
                           onClick={() => kaspiDoPay(s, due)}
-                          disabled={busy}
+                          disabled={busy || !kaspiOnline}
+                          title={
+                            kaspiOnline ? undefined : "Онлайн-протокол Kaspi выключен"
+                          }
                           className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
                         >
                           pay
@@ -772,6 +802,13 @@ export function StudioPage() {
               привязанной карты. Реальное автосписание срабатывает при выезде,
               если включён <span className="font-mono">KASPI_AUTOPAY_ENABLED</span>.
             </p>
+            {!kaspiInfo.data?.autopay_enabled && (
+              <p className="mt-2 text-xs text-ink-500/60">
+                Ключи Kaspi не заданы — вызов честно уходит в сеть и вернётся с{" "}
+                <span className="font-mono">TIMEOUT</span> примерно через 15 секунд.
+                Это ожидаемо, а не поломка.
+              </p>
+            )}
             <div className="mt-4">
               {owing.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">

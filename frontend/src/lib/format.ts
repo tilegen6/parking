@@ -65,6 +65,12 @@ export const eventFlagBadgeClass: Record<string, string> = {
   possible_misread: "bg-rose-100 text-rose-700",
 };
 
+// Способ проезда по спискам (метка сессии): зелёный/жёлтый
+export const accessTypeChip: Record<string, { label: string; cls: string }> = {
+  green: { label: "зелёный", cls: "bg-emerald-100 text-emerald-700" },
+  yellow: { label: "жёлтый", cls: "bg-amber-100 text-amber-700" },
+};
+
 // Длительность стоянки в человекочитаемом виде: «2 ч 5 мин», «14 мин», «45 сек».
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined || seconds < 0) return "—";

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { useAuth } from "./context/AuthContext";
+import { AccessListsPage } from "./pages/AccessListsPage";
 import { ActiveCarsPage } from "./pages/ActiveCarsPage";
 import { CamerasPage } from "./pages/CamerasPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -32,6 +33,7 @@ export default function App() {
   if (!user) return <LoginPage />;
 
   const isAdmin = user.role === "admin";
+  const canManageLists = isAdmin || user.role === "list_manager";
 
   return (
     <Routes>
@@ -47,6 +49,9 @@ export default function App() {
         <Route path="tariffs" element={<TariffsPage />} />
         <Route path="studio" element={<StudioPage />} />
         <Route path="simulator" element={<SimulatorPage />} />
+        {canManageLists && (
+          <Route path="access-lists" element={<AccessListsPage />} />
+        )}
         {isAdmin && <Route path="users" element={<UsersPage />} />}
         <Route path="pay/success" element={<PaySuccessPage />} />
         <Route path="pay/error" element={<PayErrorPage />} />

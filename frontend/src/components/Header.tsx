@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useDashboardStats } from "../api/hooks";
+import { Link } from "react-router-dom";
+import { useAlerts, useDashboardStats } from "../api/hooks";
 import { useAuth } from "../context/AuthContext";
 
 const ROLE_SHORT: Record<string, string> = {
@@ -12,6 +13,9 @@ export function Header({ onMenu }: { onMenu?: () => void }) {
   const qc = useQueryClient();
   const { data, isError, isFetching } = useDashboardStats();
   const { user, logout } = useAuth();
+  const canManageLists = user?.role === "admin" || user?.role === "list_manager";
+  const alerts = useAlerts();
+  const newAlerts = canManageLists ? (alerts.data?.length ?? 0) : 0;
 
   const backendOnline = !isError && data !== undefined;
   const camerasOnline = data?.cameras_online ?? 0;
@@ -36,6 +40,15 @@ export function Header({ onMenu }: { onMenu?: () => void }) {
       </div>
 
       <div className="flex items-center gap-2.5">
+        {newAlerts > 0 && (
+          <Link
+            to="/access-lists"
+            className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-rose-700"
+            title="Машины из красного списка — требуется реакция"
+          >
+            🚨 {newAlerts}
+          </Link>
+        )}
         <span className="hidden sm:contents">
           <Pill ok={backendOnline} label={backendOnline ? "Backend" : "Backend offline"} />
           <Pill ok={camerasOnline > 0} label={`Камеры ${camerasOnline}/${camerasTotal}`} />

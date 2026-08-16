@@ -10,6 +10,7 @@ import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import type { SessionStatus, SessionsFilters } from "../api/types";
 import {
+  accessTypeChip,
   formatAmount,
   formatDateTime,
   formatDuration,
@@ -214,7 +215,17 @@ export function SessionsPage() {
             {data?.items.map((s) => (
               <tr key={s.id} className="animate-fade-up hover:bg-paper">
                 <td className="px-4 py-3">
-                  <PlateReadout plate={s.plate_number} size="sm" />
+                  <div className="flex items-center gap-2">
+                    <PlateReadout plate={s.plate_number} size="sm" />
+                    {s.access_type && accessTypeChip[s.access_type] && (
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${accessTypeChip[s.access_type].cls}`}
+                        title="Способ проезда по спискам доступа"
+                      >
+                        {accessTypeChip[s.access_type].label}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   <span

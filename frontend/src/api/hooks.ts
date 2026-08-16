@@ -9,6 +9,9 @@ import type {
 } from "./auth";
 import { api, buildQuery } from "./client";
 import type {
+  AccessEntry,
+  AccessEntryInput,
+  Alert,
   BillingStats,
   Camera,
   DashboardStats,
@@ -174,6 +177,59 @@ export function useDeleteGate() {
   return useMutation({
     mutationFn: (id: number) => api.del(`/api/v1/gates/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+// Списки доступа (green/yellow/red)
+
+export function useAccessEntries() {
+  return useQuery({
+    queryKey: ["access-entries"],
+    queryFn: () => api.get<AccessEntry[]>("/api/v1/access-entries"),
+  });
+}
+
+export function useCreateAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AccessEntryInput) =>
+      api.post<AccessEntry>("/api/v1/access-entries", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+export function useUpdateAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<AccessEntryInput> }) =>
+      api.put<AccessEntry>(`/api/v1/access-entries/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+export function useDeleteAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/access-entries/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+// Оповещения (красный список)
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["alerts"],
+    queryFn: () => api.get<Alert[]>("/api/v1/alerts?only_new=true"),
+    refetchInterval: 8000,
+  });
+}
+
+export function useAckAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<Alert>(`/api/v1/alerts/${id}/ack`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
   });
 }
 

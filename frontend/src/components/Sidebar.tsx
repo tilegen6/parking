@@ -14,13 +14,21 @@ const links: NavItem[] = [
   { to: "/studio", label: "Студия", icon: "⚙" },
 ];
 
+// Ведение списков — list_manager и admin
+const managerLinks: NavItem[] = [
+  { to: "/access-lists", label: "Списки", icon: "◑" },
+];
 // Пункты только для администратора
 const adminLinks: NavItem[] = [{ to: "/users", label: "Пользователи", icon: "◍" }];
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
-  const items =
-    user?.role === "admin" ? [...links, ...adminLinks] : links;
+  const role = user?.role;
+  const items: NavItem[] = [
+    ...links,
+    ...(role === "admin" || role === "list_manager" ? managerLinks : []),
+    ...(role === "admin" ? adminLinks : []),
+  ];
   return (
     <>
       <div className="flex h-16 items-center gap-3 border-b border-white/5 px-5">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  CV_URL,
   getPipelineVersions,
   getStreamEvents,
   getStreamPreview,
@@ -83,6 +84,45 @@ export function StreamPanel() {
       .catch(() => {
         /* сервис не поднят — оставим дефолт */
       });
+  }, []);
+
+  // Поток крутится в CV-сервисе, а не в браузере: если уйти со страницы, он
+  // продолжит лить события в боевую БД. Глушим при уходе и при закрытии вкладки.
+  const activeRef = useRef(false);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+
+  useEffect(() => {
+    // Вернулись на страницу, а поток ещё жив — показываем его, а не «Старт».
+    getStreamStatus()
+      .then((st) => {
+        const mine = st.streams.find((s) => s.camera === CAMERA);
+        if (mine?.running) setActive(true);
+      })
+      .catch(() => {
+        /* CV не поднят — оставляем как есть */
+      });
+
+    // beforeunload: обычный fetch не успеет — шлём маячок.
+    const beacon = () => {
+      if (!activeRef.current) return;
+      navigator.sendBeacon?.(
+        `${CV_URL}/stream/stop`,
+        new Blob([JSON.stringify({ camera_name: CAMERA })], {
+          type: "application/json",
+        }),
+      );
+    };
+    window.addEventListener("beforeunload", beacon);
+    return () => {
+      window.removeEventListener("beforeunload", beacon);
+      if (activeRef.current) {
+        void stopStream(CAMERA).catch(() => {
+          /* уже остановлен/сервис недоступен */
+        });
+      }
+    };
   }, []);
 
   // Поллинг статуса/событий/превью, пока поток активен

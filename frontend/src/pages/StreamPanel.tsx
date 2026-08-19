@@ -23,6 +23,10 @@ const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
     label: "⏱ старт сдвинут (дубль у шлагбаума)",
     cls: "bg-amber-100 text-amber-700",
   },
+  access_denied_red: {
+    label: "🚫 красный список — не пустили",
+    cls: "bg-rose-100 text-rose-700",
+  },
   reentry_new_session: {
     label: "⚠ старая зависла → закрыта, открыта новая",
     cls: "bg-rose-100 text-rose-700",

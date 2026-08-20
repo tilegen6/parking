@@ -25,13 +25,39 @@ export interface PipelineVersion {
   desc: string;
 }
 
+/** Один вариант оси (детектор или OCR-движок). */
+export interface PipelineOption {
+  name: string;
+  label: string;
+  desc: string;
+  available: boolean;
+}
+
+export interface PipelineCatalog {
+  default: string;
+  default_engine: string;
+  default_detector: string;
+  versions: PipelineVersion[]; // готовые связки
+  detectors: PipelineOption[]; // ось «детектор»
+  engines: PipelineOption[]; // ось «OCR»
+}
+
+/** Выбор пайплайна: либо готовый пресет, либо детектор+OCR по отдельности. */
+export interface PipelineChoice {
+  version?: string;
+  engine?: string;
+  detector?: string;
+}
+
 export async function recognizePlate(
   file: File,
-  version?: string,
+  choice?: PipelineChoice,
 ): Promise<RecognizeResult> {
   const form = new FormData();
   form.append("file", file);
-  if (version) form.append("version", version);
+  if (choice?.version) form.append("version", choice.version);
+  if (choice?.engine) form.append("engine", choice.engine);
+  if (choice?.detector) form.append("detector", choice.detector);
   const res = await fetch(`${CV_URL}/recognize`, { method: "POST", body: form });
   if (!res.ok) {
     let detail = res.statusText;
@@ -45,13 +71,10 @@ export async function recognizePlate(
   return (await res.json()) as RecognizeResult;
 }
 
-export async function getPipelineVersions(): Promise<{
-  default: string;
-  versions: PipelineVersion[];
-}> {
+export async function getPipelineVersions(): Promise<PipelineCatalog> {
   const res = await fetch(`${CV_URL}/versions`);
   if (!res.ok) throw new Error(res.statusText);
-  return (await res.json()) as { default: string; versions: PipelineVersion[] };
+  return (await res.json()) as PipelineCatalog;
 }
 
 // ── Живой поток с камеры (RTSP/телефон) ────────────────────────────────
@@ -88,6 +111,9 @@ export interface StartStreamBody {
   direction: "entry" | "exit";
   camera_name?: string;
   version?: string;
+  // Независимый выбор осей (переопределяет version):
+  engine?: string;
+  detector?: string;
 }
 
 async function cvJson<T>(path: string, init?: RequestInit): Promise<T> {

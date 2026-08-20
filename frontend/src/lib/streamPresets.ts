@@ -9,7 +9,11 @@ export interface StreamPreset {
   name: string;
   url: string;
   direction: "entry" | "exit";
-  version: string;
+  // Пайплайн: детектор + OCR по отдельности. version — совместимость со
+  // старыми сохранёнными пресетами (готовая связка), новые их не пишут.
+  detector?: string;
+  engine?: string;
+  version?: string;
 }
 
 const KEY = "sp_cv_presets";
@@ -21,7 +25,8 @@ const DEFAULTS: StreamPreset[] = [
     name: "Демо (без камеры)",
     url: "demo",
     direction: "entry",
-    version: "template",
+    engine: "template",
+    detector: "whole",
   },
 ];
 

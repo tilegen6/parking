@@ -7,7 +7,7 @@ import {
   getStreamStatus,
   startStream,
   stopStream,
-  type PipelineVersion,
+  type PipelineOption,
   type StreamEvent,
   type StreamStatus,
 } from "../api/cv";
@@ -58,8 +58,11 @@ const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
 export function StreamPanel() {
   const [url, setUrl] = useState("demo");
   const [direction, setDirection] = useState<"entry" | "exit">("entry");
-  const [version, setVersion] = useState("fastplate");
-  const [versions, setVersions] = useState<PipelineVersion[]>([]);
+  // Две независимые оси пайплайна: детектор (находит рамку) и OCR (читает).
+  const [detector, setDetector] = useState("plate");
+  const [engine, setEngine] = useState("fastplate");
+  const [detectors, setDetectors] = useState<PipelineOption[]>([]);
+  const [engines, setEngines] = useState<PipelineOption[]>([]);
   const [active, setActive] = useState(false);
   const [status, setStatus] = useState<StreamStatus | null>(null);
   const [events, setEvents] = useState<StreamEvent[]>([]);
@@ -78,8 +81,10 @@ export function StreamPanel() {
   useEffect(() => {
     getPipelineVersions()
       .then((r) => {
-        setVersions(r.versions);
-        setVersion(r.default);
+        setDetectors(r.detectors);
+        setEngines(r.engines);
+        setDetector(r.default_detector);
+        setEngine(r.default_engine);
       })
       .catch(() => {
         /* сервис не поднят — оставим дефолт */
@@ -169,15 +174,25 @@ export function StreamPanel() {
     setPreview(null);
     sinceRef.current = 0;
     try {
-      // синтетика работает на template
-      const ver =
-        target === "demo" ? "template" : (preset?.version ?? version);
-      await startStream({
+      const body: Parameters<typeof startStream>[0] = {
         url: target,
         direction: dir,
         camera_name: CAMERA,
-        version: ver,
-      });
+      };
+      if (target === "demo") {
+        // синтетика работает на template + весь кадр
+        body.engine = "template";
+        body.detector = "whole";
+      } else if (preset) {
+        // из пресета: новые оси либо старый version (совместимость)
+        body.engine = preset.engine;
+        body.detector = preset.detector;
+        if (!preset.engine && !preset.detector) body.version = preset.version;
+      } else {
+        body.engine = engine;
+        body.detector = detector;
+      }
+      await startStream(body);
       setActive(true);
       setActiveId(preset?.id ?? presets.find((p) => p.url === target)?.id ?? null);
     } catch (e) {
@@ -209,7 +224,8 @@ export function StreamPanel() {
   const applyPreset = (p: StreamPreset) => {
     setUrl(p.url);
     setDirection(p.direction);
-    setVersion(p.version);
+    if (p.detector) setDetector(p.detector);
+    if (p.engine) setEngine(p.engine);
     setNameDraft(p.name);
   };
 
@@ -224,17 +240,16 @@ export function StreamPanel() {
     const value = url.trim();
     if (!value) return;
     const name = nameDraft.trim() || guessName(value);
-    const ver = value === "demo" ? "template" : version;
+    // demo → template + весь кадр; иначе — выбранные оси
+    const eng = value === "demo" ? "template" : engine;
+    const det = value === "demo" ? "whole" : detector;
     setPresets((list) => {
       const existing = list.find((p) => p.url === value);
+      const fields = { name, direction, engine: eng, detector: det, version: undefined };
       if (existing) {
-        return list.map((p) =>
-          p.id === existing.id
-            ? { ...p, name, direction, version: ver }
-            : p,
-        );
+        return list.map((p) => (p.id === existing.id ? { ...p, ...fields } : p));
       }
-      return [...list, { id: newPresetId(), name, url: value, direction, version: ver }];
+      return [...list, { id: newPresetId(), url: value, ...fields }];
     });
     setNameDraft("");
   };
@@ -390,29 +405,58 @@ export function StreamPanel() {
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-500/70">
-              Движок распознавания
-            </span>
-            {isDemo ? (
+          {isDemo ? (
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink-500/70">
+                Пайплайн
+              </span>
               <div className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink-500/60">
-                template (демо-синтетика)
+                демо-синтетика (template)
               </div>
-            ) : (
-              <select
-                value={version}
-                onChange={(e) => setVersion(e.target.value)}
-                disabled={active}
-                className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-sky focus:outline-none disabled:opacity-60"
-              >
-                {versions.map((v) => (
-                  <option key={v.name} value={v.name}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </label>
+            </label>
+          ) : (
+            <>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-500/70">
+                  Детектор (находит номер)
+                </span>
+                <select
+                  value={detector}
+                  onChange={(e) => setDetector(e.target.value)}
+                  disabled={active}
+                  title={detectors.find((d) => d.name === detector)?.desc}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-sky focus:outline-none disabled:opacity-60"
+                >
+                  {detectors.map((d) => (
+                    <option key={d.name} value={d.name} disabled={!d.available}>
+                      {d.label}
+                      {d.available ? "" : " — не установлен"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-500/70">
+                  OCR (читает символы)
+                </span>
+                <select
+                  value={engine}
+                  onChange={(e) => setEngine(e.target.value)}
+                  disabled={active}
+                  title={engines.find((en) => en.name === engine)?.desc}
+                  className="rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink focus:border-sky focus:outline-none disabled:opacity-60"
+                >
+                  {engines.map((en) => (
+                    <option key={en.name} value={en.name} disabled={!en.available}>
+                      {en.label}
+                      {en.available ? "" : " — не установлен"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
 
           <div className="ml-auto flex items-center gap-3">
             {error && <span className="text-sm text-rose-500">{error}</span>}

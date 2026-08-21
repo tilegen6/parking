@@ -7,6 +7,7 @@ import {
   useCreateAccessEntry,
   useDeleteAccessEntry,
   useGates,
+  useUpdateAccessEntry,
 } from "../api/hooks";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
@@ -35,21 +36,46 @@ export function AccessListsPage() {
   const gates = useGates();
   const { data, isLoading } = useAccessEntries();
   const create = useCreateAccessEntry();
+  const update = useUpdateAccessEntry();
   const del = useDeleteAccessEntry();
   const alerts = useAlerts();
   const ack = useAckAlert();
 
-  const [form, setForm] = useState({
+  const EMPTY = {
     plate: "",
     list_type: "green" as AccessListType,
     gate_id: "" as string,
     valid_until: "",
     note: "",
-  });
+  };
+  const [form, setForm] = useState(EMPTY);
+  const [editId, setEditId] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [fType, setFType] = useState<AccessListType | "">("");
+  const [fPlate, setFPlate] = useState("");
+
+  const busy = create.isPending || update.isPending;
 
   const gateName = (id: number | null) =>
     id == null ? "все шлагбаумы" : (gates.data?.find((g) => g.id === id)?.name ?? `#${id}`);
+
+  const reset = () => {
+    setForm(EMPTY);
+    setEditId(null);
+    setErr(null);
+  };
+
+  const startEdit = (en: AccessEntry) => {
+    setEditId(en.id);
+    setErr(null);
+    setForm({
+      plate: en.plate,
+      list_type: en.list_type,
+      gate_id: en.gate_id == null ? "" : String(en.gate_id),
+      valid_until: en.valid_until ? en.valid_until.slice(0, 16) : "",
+      note: en.note ?? "",
+    });
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,11 +88,16 @@ export function AccessListsPage() {
         form.list_type === "yellow" && form.valid_until ? form.valid_until : null,
       note: form.note.trim() || null,
     };
-    create.mutate(payload, {
-      onSuccess: () =>
-        setForm({ plate: "", list_type: "green", gate_id: "", valid_until: "", note: "" }),
-      onError: (e2) => setErr(e2 instanceof Error ? e2.message : "Ошибка"),
-    });
+    const onError = (e2: unknown) =>
+      setErr(e2 instanceof Error ? e2.message : "Ошибка");
+    if (editId != null) {
+      update.mutate(
+        { id: editId, patch: payload },
+        { onSuccess: reset, onError },
+      );
+    } else {
+      create.mutate(payload, { onSuccess: reset, onError });
+    }
   };
 
   const remove = (en: AccessEntry) => {
@@ -74,8 +105,17 @@ export function AccessListsPage() {
       del.mutate(en.id);
   };
 
+  const toggle = (en: AccessEntry) =>
+    update.mutate({ id: en.id, patch: { is_active: !en.is_active } });
+
   const counts = (t: AccessListType) =>
     data?.filter((e) => e.list_type === t).length ?? 0;
+
+  const rows = (data ?? []).filter(
+    (e) =>
+      (!fType || e.list_type === fType) &&
+      (!fPlate || e.plate.includes(fPlate.toUpperCase().replace(/[^A-Z0-9]/g, ""))),
+  );
 
   return (
     <div className="space-y-6">
@@ -127,7 +167,20 @@ export function AccessListsPage() {
 
       {/* Форма */}
       <form onSubmit={submit} className="card space-y-4 p-5">
-        <div className="eyebrow">Добавить в список</div>
+        <div className="flex items-center justify-between">
+          <div className="eyebrow">
+            {editId != null ? "Редактирование записи" : "Добавить в список"}
+          </div>
+          {editId != null && (
+            <button
+              type="button"
+              onClick={reset}
+              className="text-xs text-ink-500/60 hover:text-sky-700"
+            >
+              отменить
+            </button>
+          )}
+        </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Field label="Номер *">
             <input
@@ -186,10 +239,14 @@ export function AccessListsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={create.isPending || !form.plate.trim()}
+            disabled={busy || !form.plate.trim()}
             className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
           >
-            {create.isPending ? "Добавление…" : "Добавить"}
+            {busy
+              ? "Сохранение…"
+              : editId != null
+                ? "Сохранить"
+                : "Добавить"}
           </button>
           <span className="text-xs text-ink-500/50">
             {LIST_META[form.list_type].hint}
@@ -197,6 +254,44 @@ export function AccessListsPage() {
           {err && <span className="text-sm text-rose-500">{err}</span>}
         </div>
       </form>
+
+      {/* Фильтры */}
+      <div className="card flex flex-wrap items-end gap-3 p-4">
+        <Field label="Список">
+          <select
+            value={fType}
+            onChange={(e) => setFType(e.target.value as AccessListType | "")}
+            className="input"
+          >
+            <option value="">Все</option>
+            <option value="green">Зелёный</option>
+            <option value="yellow">Жёлтый</option>
+            <option value="red">Красный</option>
+          </select>
+        </Field>
+        <Field label="Номер">
+          <input
+            value={fPlate}
+            onChange={(e) => setFPlate(e.target.value)}
+            placeholder="поиск"
+            className="input font-mono uppercase"
+          />
+        </Field>
+        {(fType || fPlate) && (
+          <button
+            onClick={() => {
+              setFType("");
+              setFPlate("");
+            }}
+            className="rounded-lg border border-line px-3 py-1.5 text-sm text-ink-600 transition hover:border-sky"
+          >
+            Сбросить
+          </button>
+        )}
+        <span className="ml-auto self-center text-xs text-ink-500/50">
+          показано {rows.length} из {data?.length ?? 0}
+        </span>
+      </div>
 
       {/* Таблица */}
       <div className="card overflow-hidden">
@@ -208,6 +303,7 @@ export function AccessListsPage() {
               <th className="px-4 py-3">Шлагбаум</th>
               <th className="px-4 py-3">Бесплатно до</th>
               <th className="px-4 py-3">Заметка</th>
+              <th className="px-4 py-3">Статус</th>
               <th className="px-4 py-3">Добавил</th>
               <th className="px-4 py-3 text-right">Действия</th>
             </tr>
@@ -215,20 +311,25 @@ export function AccessListsPage() {
           <tbody className="divide-y divide-line">
             {isLoading && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
                   Загрузка…
                 </td>
               </tr>
             )}
-            {!isLoading && data?.length === 0 && (
+            {!isLoading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
-                  Списки пусты
+                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
+                  {data?.length ? "Ничего не найдено" : "Списки пусты"}
                 </td>
               </tr>
             )}
-            {data?.map((en) => (
-              <tr key={en.id} className="animate-fade-up hover:bg-paper">
+            {rows.map((en) => (
+              <tr
+                key={en.id}
+                className={`animate-fade-up hover:bg-paper ${
+                  en.is_active ? "" : "opacity-50"
+                }`}
+              >
                 <td className="px-4 py-3">
                   <PlateReadout plate={en.plate} size="sm" />
                 </td>
@@ -244,17 +345,43 @@ export function AccessListsPage() {
                   {en.valid_until ? formatDateTime(en.valid_until) : "—"}
                 </td>
                 <td className="px-4 py-3 text-ink-500/70">{en.note ?? "—"}</td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs font-medium ${
+                      en.is_active
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {en.is_active ? "активна" : "выключена"}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-ink-500/60">
                   {en.created_by_username ?? "—"}
                 </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => remove(en)}
-                    disabled={del.isPending}
-                    className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
-                  >
-                    удалить
-                  </button>
+                <td className="px-4 py-3">
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => startEdit(en)}
+                      className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-500/80 transition hover:border-sky hover:text-sky-700"
+                    >
+                      изменить
+                    </button>
+                    <button
+                      onClick={() => toggle(en)}
+                      disabled={update.isPending}
+                      className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-ink-500/80 transition hover:border-sky disabled:opacity-50"
+                    >
+                      {en.is_active ? "выключить" : "включить"}
+                    </button>
+                    <button
+                      onClick={() => remove(en)}
+                      disabled={del.isPending}
+                      className="rounded-md border border-line px-2.5 py-1 text-xs font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:opacity-50"
+                    >
+                      удалить
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

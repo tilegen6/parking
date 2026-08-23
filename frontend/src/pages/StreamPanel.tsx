@@ -55,6 +55,58 @@ const ACTION_LABEL: Record<string, { label: string; cls: string }> = {
   },
 };
 
+// Почему CV не дал сигнал открыть шлагбаум. Без расшифровки оператор видит
+// голый код причины и не понимает, что чинить: камеру, свет или зону.
+const REASON_LABEL: Record<string, { label: string; hint: string }> = {
+  ok: { label: "готов открыть", hint: "все проверки пройдены" },
+  stale_hit: {
+    label: "номер пропал из кадра",
+    hint: "машина уехала или номер не виден — открывать вслед нельзя",
+  },
+  few_votes: {
+    label: "мало прочтений",
+    hint: "номер увидели слишком мало раз, ждём ещё кадров",
+  },
+  no_agreement: {
+    label: "чтения расходятся",
+    hint: "номер «мигает» между вариантами — не уверены, какой верный",
+  },
+  low_confidence: {
+    label: "низкая уверенность",
+    hint: "грязный номер, ночь, блик или машина далеко",
+  },
+  bad_format: {
+    label: "не похоже на номер KZ",
+    hint: "прочитанное не укладывается в формат казахстанского номера",
+  },
+  never_grew: {
+    label: "объект не приближается",
+    hint: "номер на плакате, припаркованная в фоне или чужая полоса",
+  },
+  leaving: {
+    label: "машина уезжает",
+    hint: "номер уменьшается в кадре — сигнал не даём",
+  },
+  box_too_small: {
+    label: "машина ещё далеко",
+    hint: "номер занимает слишком мало кадра — рано принимать решение",
+  },
+  box_too_big: { label: "слишком крупно", hint: "скорее всего это не номер" },
+  out_of_roi: {
+    label: "вне зоны шлагбаума",
+    hint: "номер не в настроенной зоне принятия решения",
+  },
+  no_box: {
+    label: "нет геометрии",
+    hint: "детектор «весь кадр» не даёт рамку — зону и приближение не проверить",
+  },
+  already_decided: { label: "уже открыли", hint: "по этой машине решение принято" },
+  gave_up: {
+    label: "сдались, нужен оператор",
+    hint: "номер так и не прочитали уверенно — открыть вручную",
+  },
+};
+
 export function StreamPanel() {
   const [url, setUrl] = useState("demo");
   const [direction, setDirection] = useState<"entry" | "exit">("entry");
@@ -510,15 +562,34 @@ export function StreamPanel() {
               </div>
             )}
             {status && (
-              <div className="grid grid-cols-3 gap-2 px-1 pb-1 text-center">
-                <Stat label="кадров" value={status.frames} />
-                <Stat label="событий" value={status.events} />
-                <Stat
-                  label="реконнект"
-                  value={status.reconnects ?? 0}
-                  warn={(status.reconnects ?? 0) > 0}
-                />
-              </div>
+              <>
+                <div className="grid grid-cols-4 gap-2 px-1 text-center">
+                  <Stat label="кадров" value={status.frames} />
+                  <Stat label="в кадре" value={status.tracks_active ?? 0} />
+                  <Stat label="событий" value={status.events} />
+                  <Stat
+                    label="брак кадра"
+                    value={status.frames_dropped ?? 0}
+                    warn={(status.frames_dropped ?? 0) > 0}
+                  />
+                </div>
+
+                {/* Решение по шлагбауму — главный экран для проверки системы */}
+                <div className="mx-1 rounded-xl border border-line bg-paper p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="eyebrow">Шлагбаум</div>
+                    <span className="font-mono text-[11px] text-ink-500/50">
+                      открыт {status.opens ?? 0}×
+                      {(status.stalled ?? 0) > 0 && (
+                        <span className="ml-2 text-amber-600">
+                          не решено {status.stalled}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <ReasonBadge reason={status.last_reason} active={active} />
+                </div>
+              </>
             )}
             {status?.source_error && (
               <p className="px-2 pb-1 text-xs text-amber-600">
@@ -559,6 +630,22 @@ export function StreamPanel() {
                     <span className="text-xs text-ink-500/70">
                       {e.direction === "ENTRY" ? "Въезд" : "Выезд"}
                     </span>
+                    {/* Было ли по этому событию решение открыть шлагбаум */}
+                    {e.decision === "open" ? (
+                      <span
+                        className="rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"
+                        title="Сигнал открыть шлагбаум — машина была перед стрелой"
+                      >
+                        🚗 шлагбаум
+                      </span>
+                    ) : (
+                      <span
+                        className="rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500"
+                        title="Только учёт: уверенности на открытие не хватило"
+                      >
+                        учёт
+                      </span>
+                    )}
                     <span className="ml-auto flex items-center gap-2">
                       {e.confidence != null && (
                         <span className="font-mono text-xs text-ink-500/50">
@@ -585,6 +672,47 @@ export function StreamPanel() {
             </ul>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Текущее решение по шлагбауму: открыли или почему нет (человеческим языком). */
+function ReasonBadge({
+  reason,
+  active,
+}: {
+  reason?: string;
+  active: boolean;
+}) {
+  if (!active) {
+    return (
+      <p className="mt-1 text-xs text-ink-500/50">
+        поток не запущен — решения не принимаются
+      </p>
+    );
+  }
+  if (!reason) {
+    return <p className="mt-1 text-xs text-ink-500/50">ждём машину в кадре…</p>;
+  }
+  const meta = REASON_LABEL[reason];
+  const opened = reason === "ok" || reason === "already_decided";
+  return (
+    <div className="mt-1.5">
+      <span
+        className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium ${
+          opened
+            ? "bg-emerald-100 text-emerald-700"
+            : reason === "gave_up"
+              ? "bg-rose-100 text-rose-700"
+              : "bg-amber-100 text-amber-800"
+        }`}
+      >
+        {opened ? "🚗 " : "⏳ "}
+        {meta?.label ?? reason}
+      </span>
+      {meta?.hint && (
+        <p className="mt-1 text-[11px] leading-snug text-ink-500/60">{meta.hint}</p>
       )}
     </div>
   );

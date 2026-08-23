@@ -92,6 +92,16 @@ export interface StreamStatus {
   opened: boolean | null;
   reconnects: number | null;
   source_error: string | null;
+  /** Кадров отсеяно фильтром качества (смаз/темнота). */
+  frames_dropped?: number;
+  /** Сколько раз дали сигнал «открыть шлагбаум». */
+  opens?: number;
+  /** Треков, по которым решение так и не приняли — нужен оператор. */
+  stalled?: number;
+  /** Почему НЕ открыли в последний раз (stale_hit, few_votes, …). */
+  last_reason?: string;
+  /** Сколько машин сейчас в кадре (живых треков). */
+  tracks_active?: number;
 }
 
 export interface StreamEvent {
@@ -104,6 +114,8 @@ export interface StreamEvent {
   backend_action: string | null;
   backend_error: string | null;
   time: string | null;
+  /** open — был сигнал открыть шлагбаум; observe — только учёт. */
+  decision?: "open" | "observe";
 }
 
 export interface StartStreamBody {

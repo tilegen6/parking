@@ -1,25 +1,17 @@
 import { useState } from "react";
-import {
-  useCameras,
-  useCreateCamera,
-  useGates,
-  useUpdateCamera,
-} from "../api/hooks";
+import { useCameras, useCreateCamera } from "../api/hooks";
 import { StatTile } from "../components/StatTile";
 import { formatDateTime } from "../lib/format";
 
 export function CamerasPage() {
   const { data, isLoading, isError } = useCameras();
   const createCamera = useCreateCamera();
-  const updateCamera = useUpdateCamera();
-  const gates = useGates();
 
   const [form, setForm] = useState({
     name: "",
     ip_address: "",
     type: "",
     location: "",
-    gate_id: "",
   });
 
   const submit = (e: React.FormEvent) => {
@@ -31,17 +23,10 @@ export function CamerasPage() {
         ip_address: form.ip_address || null,
         type: form.type || null,
         location: form.location || null,
-        gate_id: form.gate_id ? Number(form.gate_id) : null,
       },
       {
         onSuccess: () =>
-          setForm({
-            name: "",
-            ip_address: "",
-            type: "",
-            location: "",
-            gate_id: "",
-          }),
+          setForm({ name: "", ip_address: "", type: "", location: "" }),
       },
     );
   };
@@ -119,21 +104,6 @@ export function CamerasPage() {
               className="input w-full"
             />
           </Field>
-          <Field label="Шлагбаум">
-            <select
-              value={form.gate_id}
-              onChange={(e) => setForm({ ...form, gate_id: e.target.value })}
-              className="input w-full"
-            >
-              <option value="">— не привязана —</option>
-              {gates.data?.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                  {g.zone ? ` · ${g.zone}` : ""}
-                </option>
-              ))}
-            </select>
-          </Field>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -160,7 +130,6 @@ export function CamerasPage() {
               <th className="px-4 py-3">IP</th>
               <th className="px-4 py-3">Тип</th>
               <th className="px-4 py-3">Расположение</th>
-              <th className="px-4 py-3">Шлагбаум</th>
               <th className="px-4 py-3">Статус</th>
               <th className="px-4 py-3">Добавлена</th>
             </tr>
@@ -168,21 +137,21 @@ export function CamerasPage() {
           <tbody className="divide-y divide-line">
             {isLoading && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
                   Загрузка…
                 </td>
               </tr>
             )}
             {isError && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-rose-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-rose-500">
                   Ошибка загрузки
                 </td>
               </tr>
             )}
             {!isLoading && data?.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
                   Камеры ещё не добавлены
                 </td>
               </tr>
@@ -196,28 +165,6 @@ export function CamerasPage() {
                 </td>
                 <td className="px-4 py-3 text-ink-500/70">{cam.type ?? "—"}</td>
                 <td className="px-4 py-3 text-ink-500/70">{cam.location ?? "—"}</td>
-                <td className="px-4 py-3">
-                  <select
-                    value={cam.gate_id ?? ""}
-                    onChange={(e) =>
-                      updateCamera.mutate({
-                        id: cam.id,
-                        patch: {
-                          gate_id: e.target.value ? Number(e.target.value) : null,
-                        },
-                      })
-                    }
-                    disabled={updateCamera.isPending}
-                    className="input py-1 text-xs"
-                  >
-                    <option value="">— нет —</option>
-                    {gates.data?.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={cam.status} />
                 </td>

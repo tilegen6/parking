@@ -40,6 +40,46 @@ async def seeded(db):
     return {"a": a.id, "b": b.id, "c": c.id}
 
 
+async def test_plate_canonicalized_entry_cyrillic_exit_latin(client, db):
+    """P0-4: въезд кириллицей, выезд латиницей — выезд закрывает ТУ ЖЕ сессию.
+
+    Раньше сессии сравнивались по сырой строке: «777 АВС 02» и «777ABC02»
+    считались разными машинами, выезд не находил сессию, оплата не начислялась.
+    """
+    entry = await client.post(
+        "/api/v1/hikvision/anpr-event",
+        json={"plateNumber": "777 АВС 02", "direction": "ENTRY", "confidence": 0.96},
+    )
+    assert entry.status_code == 201, entry.text
+    assert entry.json()["session_action"] == "created"
+    assert entry.json()["plate_number"] == "777ABC02"  # хранится канон
+
+    exit_ = await client.post(
+        "/api/v1/hikvision/anpr-event",
+        json={"plateNumber": "777abc02", "direction": "EXIT", "confidence": 0.94},
+    )
+    assert exit_.status_code == 201, exit_.text
+    # выезд нашёл активную сессию и закрыл её (а не event_without_session)
+    assert exit_.json()["session_action"] not in ("event_without_session", None)
+    assert exit_.json()["session_id"] == entry.json()["session_id"]
+
+
+async def test_event_keeps_raw_plate(client, db):
+    """Сырой номер камеры сохраняется для отображения (plate_raw)."""
+    r = await client.post(
+        "/api/v1/hikvision/anpr-event",
+        json={"plateNumber": "о777оо01", "direction": "ENTRY", "confidence": 0.9},
+    )
+    assert r.status_code == 201
+    ev = (
+        await db.execute(
+            RecognitionEvent.__table__.select().order_by(RecognitionEvent.id.desc())
+        )
+    ).first()
+    assert ev.plate_number == "O777OO01"  # канон
+    assert ev.plate_raw == "о777оо01"  # как прислали
+
+
 async def test_list_all(client, seeded):
     r = await client.get("/api/v1/parking-sessions")
     assert r.status_code == 200

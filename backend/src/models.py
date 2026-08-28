@@ -249,7 +249,12 @@ class RecognitionEvent(Base):
     __tablename__ = "recognition_event"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Канонический номер (нормализован на приёме): по нему идут ВСЕ сравнения —
+    # активная сессия, списки доступа, lookup Kaspi.
     plate_number: Mapped[str | None] = mapped_column(String(32), index=True)
+    # Как номер прислала камера (регистр/пробелы/кириллица) — для отображения и
+    # разбора спорных распознаваний. В логике не участвует.
+    plate_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)
     direction: Mapped[str] = mapped_column(String(16), default=Direction.UNKNOWN)
     event_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True, server_default=func.now()

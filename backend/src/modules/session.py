@@ -42,7 +42,7 @@ from src.models import (
     RecognitionEvent,
     SessionStatus,
 )
-from src.modules.access import record_alert, resolve_access
+from src.modules.access import normalize_plate, record_alert, resolve_access
 from src.modules.tariff import get_active_tariff, tariff_price
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
@@ -584,7 +584,11 @@ async def list_sessions(
     """Список парковочных сессий с фильтрами, сортировкой и пагинацией."""
     conditions: list[ColumnElement[bool]] = []
     if plate:
-        conditions.append(ParkingSession.plate_number.ilike(f"%{plate}%"))
+        # Ищем по канону: в БД хранится нормализованный номер, а оператор может
+        # ввести с пробелами/кириллицей.
+        conditions.append(
+            ParkingSession.plate_number.ilike(f"%{normalize_plate(plate)}%")
+        )
     if status:
         conditions.append(ParkingSession.status == status.lower())
     if gate_id is not None:

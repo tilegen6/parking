@@ -34,6 +34,24 @@ def test_normalize_plate():
     assert access.normalize_plate(None) == ""
 
 
+def test_normalize_plate_transliterates_cyrillic():
+    """Казахстанские номера часто приходят кириллицей-гомоглифами (А, В, Е, К,
+    М, Н, О, Р, С, Т, У, Х). Без транслитерации они вырезались бы как не-ASCII
+    и номер превращался в пустую строку → машина не находила свою сессию."""
+    # чистая кириллица, визуально совпадающая с латиницей
+    assert access.normalize_plate("777АВС02") == "777ABC02"
+    assert access.normalize_plate("О123РТ77") == "O123PT77"
+    # смешанный ввод (часть латиницей, часть кириллицей) сходится к одному виду
+    assert access.normalize_plate("777АBC02") == access.normalize_plate("777ABC02")
+    # строчная кириллица тоже
+    assert access.normalize_plate("м100мм") == "M100MM"
+
+
+def test_normalize_plate_all_cyrillic_stays_nonempty():
+    """Гомоглифы транслитерируются, а не выкидываются — результат не пустой."""
+    assert access.normalize_plate("АВЕКМНОРСТУХ") == "ABEKMHOPCTYX"
+
+
 async def test_resolver_gate_specific_beats_global(db):
     g = Gate(name="КПП")
     db.add(g)

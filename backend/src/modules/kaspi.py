@@ -31,6 +31,7 @@ from src.config import settings
 from src.core.security import verify_kaspi_source
 from src.database import get_session
 from src.models import Payment, PaymentStatus
+from src.modules.access import normalize_plate
 from src.modules.payment import amount_due, credit_session
 from src.modules.session import find_active_session
 
@@ -97,7 +98,9 @@ async def kaspi_pay(
 ) -> Response:
     """Единая точка онлайн-протокола Kaspi: диспетчер по command (check|pay)."""
     fmt = format or settings.kaspi_provider_response_format
-    plate = account.strip().upper()
+    # Kaspi присылает номер как ввёл водитель — канонизируем так же, как события
+    # камеры, иначе lookup активной сессии не совпадёт.
+    plate = normalize_plate(account)
 
     if command == "check":
         return await _handle_check(session, txn_id, plate, fmt)

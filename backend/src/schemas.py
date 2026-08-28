@@ -201,6 +201,8 @@ class RecognitionEventOut(BaseModel):
 
     id: int
     plate_number: str | None
+    # Как номер прислала камера (до канонизации) — для сверки спорных распознаваний
+    plate_raw: str | None = None
     direction: str
     event_time: datetime
     confidence: float | None

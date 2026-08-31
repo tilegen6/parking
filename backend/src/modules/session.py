@@ -33,6 +33,7 @@ from src.models import (
     RecognitionEvent,
     SessionStatus,
 )
+from src.modules.tariff import calculate_price, get_active_tariff
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
 logger = logging.getLogger(__name__)
@@ -176,10 +177,20 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
     exit_at = _as_aware(event.event_time)
     if entry is not None and exit_at is not None:
         active.duration_seconds = int((exit_at - entry).total_seconds())
+    # Стоимость по активному тарифу (ТЗ §3.4); без тарифа price остаётся None
+    tariff = await get_active_tariff(session)
+    if tariff is not None and active.duration_seconds is not None:
+        active.price = calculate_price(
+            active.duration_seconds,
+            free_minutes=tariff.free_minutes,
+            price_per_hour=tariff.price_per_hour,
+            daily_cap=tariff.daily_cap,
+        )
     logger.info(
-        "EXIT: закрыта сессия #%s (%s сек) для %s",
+        "EXIT: закрыта сессия #%s (%s сек, %s) для %s",
         active.id,
         active.duration_seconds,
+        active.price,
         event.plate_number,
     )
     return SessionResult("closed", active.id)
@@ -253,13 +264,13 @@ async def list_sessions(
         await session.execute(select(func.count()).select_from(base.subquery()))
     ).scalar_one()
 
-    sort_col = _SORT_FIELDS.get(sort, ParkingSession.entry_time)
-    sort_col = sort_col.asc() if order == "asc" else sort_col.desc()
+    sort_field = _SORT_FIELDS.get(sort, ParkingSession.entry_time)
+    order_by = sort_field.asc() if order == "asc" else sort_field.desc()
 
     rows = (
         (
             await session.execute(
-                base.order_by(sort_col).offset((page - 1) * limit).limit(limit)
+                base.order_by(order_by).offset((page - 1) * limit).limit(limit)
             )
         )
         .scalars()
@@ -287,6 +298,25 @@ async def list_active_sessions(
                 select(ParkingSession)
                 .where(ParkingSession.status == SessionStatus.ACTIVE)
                 .order_by(ParkingSession.entry_time.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_to_out(r) for r in rows]
+
+
+@router.get("/parking-sessions/unpaid", response_model=list[ParkingSessionOut])
+async def list_unpaid_sessions(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ParkingSessionOut]:
+    """Сессии, выехавшие без оплаты (долги)."""
+    rows = (
+        (
+            await session.execute(
+                select(ParkingSession)
+                .where(ParkingSession.status == SessionStatus.UNPAID)
+                .order_by(ParkingSession.exit_time.desc())
             )
         )
         .scalars()

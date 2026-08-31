@@ -164,3 +164,41 @@ class Tariff(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class PaymentStatus:
+    """Статусы платежа."""
+
+    PENDING = "pending"  # создан, ждём подтверждения от провайдера
+    PAID = "paid"  # оплачено
+    FAILED = "failed"  # отклонён / ошибка
+
+
+class Payment(Base):
+    """Платёж за парковочную сессию через провайдера (в MVP — mock)."""
+
+    __tablename__ = "payment"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(
+        ForeignKey("parking_session.id", ondelete="CASCADE"), index=True
+    )
+    amount: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(8), default="KZT")
+    status: Mapped[str] = mapped_column(
+        String(16), default=PaymentStatus.PENDING, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(32), default="mock")
+    # id платежа у провайдера — по нему приходит webhook
+    provider_payment_id: Mapped[str] = mapped_column(String(64), index=True)
+    pay_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

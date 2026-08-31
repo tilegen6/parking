@@ -10,6 +10,7 @@ from src.models import (
     ParkingSession,
     RecognitionEvent,
     SessionStatus,
+    Tariff,
 )
 from src.modules import session as svc
 
@@ -95,3 +96,24 @@ async def test_reentry_after_exit_creates_new_session(db):
     _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(hours=2))
     assert r2.action == "created"
     assert r2.session_id != r1.session_id
+
+
+async def test_exit_sets_price_from_active_tariff(db):
+    # активный тариф: 0 беспл, 100/час, без потолка
+    db.add(
+        Tariff(
+            name="t", free_minutes=0, price_per_hour=100, daily_cap=None, is_active=True
+        )
+    )
+    await db.flush()
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=2))
+    sess = await db.get(ParkingSession, r1.session_id)
+    assert sess.price == 200  # 2 часа × 100
+
+
+async def test_exit_without_tariff_leaves_price_none(db):
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=2))
+    sess = await db.get(ParkingSession, r1.session_id)
+    assert sess.price is None

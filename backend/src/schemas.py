@@ -117,3 +117,31 @@ class TariffOut(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+# --- Payment ---
+class PaymentCreate(BaseModel):
+    session_id: int
+
+
+class PaymentWebhook(BaseModel):
+    """Уведомление об оплате (в MVP — от Студии; у реального провайдера — подпись)."""
+
+    provider_payment_id: str
+    status: str = "paid"
+
+
+class PaymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    session_id: int
+    amount: float
+    currency: str
+    status: str
+    provider: str
+    provider_payment_id: str
+    pay_url: str | None
+    paid_at: datetime | None
+    created_at: datetime
+    updated_at: datetime

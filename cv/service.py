@@ -17,6 +17,8 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import threading
+from collections import deque
 
 import numpy as np
 
@@ -27,11 +29,19 @@ try:
 except ImportError:  # pragma: no cover
     cv2 = None  # type: ignore[assignment]
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 from recognizer.config import RecognizerConfig  # noqa: E402
 from recognizer.pipeline import Pipeline  # noqa: E402
+from recognizer.sink import BackendSink  # noqa: E402
+from recognizer.sources import DemoSource, StreamSource  # noqa: E402
+from recognizer.stream import StreamPipeline  # noqa: E402
+
+# Куда CV шлёт распознанные события (тот же приём, что у камеры). В docker —
+# сервис `backend`; переопределяется env CV_BACKEND_URL или полем backend_url.
+DEFAULT_BACKEND_URL = os.environ.get("CV_BACKEND_URL", "http://backend:8000")
 
 # Лимиты загрузки (/recognize) — защита от DoS/decompression-bomb
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 МБ на файл
@@ -92,6 +102,191 @@ def _annotate(image: np.ndarray, plate: str | None, box) -> str:
     return f"data:image/png;base64,{b64}"
 
 
+class StreamStartReq(BaseModel):
+    url: str  # rtsp://… | http://phone:8080/video | индекс вебки | "demo"
+    direction: str = "entry"  # entry | exit (топология: камера въезда/выезда)
+    camera_name: str = "cv-stream"
+    version: str | None = None  # версия пайплайна; по умолчанию — дефолт сервиса
+    backend_url: str | None = None  # переопределить приёмник событий
+
+
+class _Handle:
+    """Один живой поток: источник + онлайн-пайплайн + воркер-поток."""
+
+    def __init__(
+        self, camera: str, url: str, direction: str, version: str, source, sp
+    ) -> None:  # noqa: ANN001
+        self.camera = camera
+        self.url = url
+        self.direction = direction
+        self.version = version
+        self.source = source
+        self.sp = sp
+        self.thread: threading.Thread | None = None
+        self.running = True
+        self.error: str | None = None
+        self._lock = threading.Lock()
+        self._preview: tuple | None = None  # (image, plate, box)
+
+    def set_preview(self, frame, res) -> None:  # noqa: ANN001
+        if frame is None:
+            return
+        plate = res.plate if res else None
+        box = res.box if res else None
+        with self._lock:
+            self._preview = (frame.image, plate, box)
+
+    def preview(self):  # noqa: ANN202
+        with self._lock:
+            return self._preview
+
+
+class StreamManager:
+    """Держит воркеры распознавания живых потоков (по имени камеры)."""
+
+    def __init__(self, pipeline_factory, base_conf: float) -> None:  # noqa: ANN001
+        self._pf = pipeline_factory  # version -> Pipeline (с загруженными моделями)
+        self._base_conf = base_conf
+        self._streams: dict[str, _Handle] = {}
+        self._events: deque = deque(maxlen=200)
+        self._seq = 0
+        self._lock = threading.Lock()
+
+    def _build(self, req: StreamStartReq, version: str):  # noqa: ANN202
+        # Реюзаем модели кэшированного пайплайна версии, но свой cfg с direction
+        base = self._pf(version)
+        v = PIPELINE_VERSIONS[version]
+        cfg = RecognizerConfig(
+            engine=v["engine"],
+            detector=v["detector"],
+            confidence_threshold=self._base_conf,
+            direction=req.direction,
+            camera_name=req.camera_name,
+        )
+        pipeline = Pipeline(cfg, detector=base.detector, ocr=base.ocr)
+        sinks = {
+            "json": [],
+            "annot": [],
+            "backend": [BackendSink(req.backend_url or DEFAULT_BACKEND_URL)],
+        }
+        sp = StreamPipeline(pipeline, cfg, sinks=sinks)
+        source: DemoSource | StreamSource
+        if req.url == "demo":
+            source = DemoSource(target_fps=cfg.video_fps)
+        else:
+            source = StreamSource(
+                req.url, target_fps=cfg.video_fps, name=req.camera_name
+            )
+        return _Handle(req.camera_name, req.url, req.direction, version, source, sp)
+
+    def start(self, req: StreamStartReq, version: str) -> dict:
+        with self._lock:
+            old = self._streams.get(req.camera_name)
+        if old is not None:
+            self._stop_handle(old)
+        handle = self._build(req, version)
+        handle.thread = threading.Thread(target=self._run, args=(handle,), daemon=True)
+        with self._lock:
+            self._streams[req.camera_name] = handle
+        handle.thread.start()
+        return self.status(req.camera_name)
+
+    def _run(self, handle: _Handle) -> None:
+        try:
+            for frame in handle.source.frames():
+                recs = handle.sp.process(frame)
+                handle.set_preview(handle.sp.last_frame, handle.sp.last_res)
+                for rec in recs:
+                    self._add_event(handle, rec)
+        except Exception as e:  # noqa: BLE001
+            handle.error = str(e)
+        finally:
+            handle.running = False
+
+    def _add_event(self, handle: _Handle, rec: dict) -> None:
+        br = rec.get("backend_response") or {}
+        with self._lock:
+            self._seq += 1
+            self._events.append(
+                {
+                    "seq": self._seq,
+                    "camera": handle.camera,
+                    "plate": rec.get("plate_number"),
+                    "direction": rec.get("direction"),
+                    "confidence": rec.get("confidence"),
+                    "flag": rec.get("flag"),
+                    "backend_action": br.get("session_action"),
+                    "backend_error": rec.get("backend_error"),
+                    "time": rec.get("event_time"),
+                }
+            )
+
+    def _stop_handle(self, handle: _Handle) -> None:
+        handle.source.stop()
+        if handle.thread is not None:
+            handle.thread.join(timeout=5)
+        handle.running = False
+
+    def stop(self, camera: str) -> dict:
+        with self._lock:
+            handle = self._streams.get(camera)
+        if handle is None:
+            raise HTTPException(404, f"поток '{camera}' не запущен")
+        self._stop_handle(handle)
+        return self.status(camera)
+
+    def stop_all(self) -> None:
+        with self._lock:
+            handles = list(self._streams.values())
+        for h in handles:
+            self._stop_handle(h)
+
+    def status(self, camera: str | None = None) -> dict:
+        with self._lock:
+            handles = (
+                [self._streams[camera]]
+                if camera and camera in self._streams
+                else list(self._streams.values())
+            )
+        streams = []
+        for h in handles:
+            src = getattr(h.source, "status", None)
+            streams.append(
+                {
+                    "camera": h.camera,
+                    "url": h.url,
+                    "direction": h.direction,
+                    "version": h.version,
+                    "running": h.running,
+                    "error": h.error,
+                    "frames": h.sp.frames_seen,
+                    "events": h.sp.events_emitted,
+                    "last_plate": h.sp.last_plate,
+                    "opened": getattr(src, "opened", None),
+                    "reconnects": getattr(src, "reconnects", None),
+                    "source_error": getattr(src, "last_error", None),
+                }
+            )
+        return {"streams": streams}
+
+    def events(self, since: int = 0) -> dict:
+        with self._lock:
+            items = [e for e in self._events if e["seq"] > since]
+        last = items[-1]["seq"] if items else since
+        return {"events": items, "last_seq": last}
+
+    def preview(self, camera: str) -> dict:
+        with self._lock:
+            handle = self._streams.get(camera)
+        if handle is None:
+            raise HTTPException(404, f"поток '{camera}' не запущен")
+        pv = handle.preview()
+        if pv is None or cv2 is None:
+            return {"image": None, "plate": None}
+        image, plate, box = pv
+        return {"image": _annotate(image, plate, box), "plate": plate}
+
+
 def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
     # порог общий для всех версий; берём из cfg (тесты) или env
     base_conf = (
@@ -130,6 +325,8 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
                 )
             )
         return pipelines[version]
+
+    stream_mgr = StreamManager(get_pipeline, base_conf)
 
     @app.get("/health")
     def health() -> dict:
@@ -191,6 +388,39 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
             "engine": v["engine"],
             "detector": v["detector"],
         }
+
+    # ── Живой поток с камеры (RTSP/телефон) ──────────────────────────────
+    @app.post("/stream/start")
+    def stream_start(req: StreamStartReq) -> dict:
+        version = req.version or default_version
+        if version not in PIPELINE_VERSIONS:
+            raise HTTPException(400, f"неизвестная версия пайплайна: {version}")
+        if req.direction not in ("entry", "exit"):
+            raise HTTPException(400, "direction: entry | exit")
+        try:
+            return stream_mgr.start(req, version)
+        except RuntimeError as e:  # движок версии не установлен / нет cv2
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/stream/stop")
+    def stream_stop(camera_name: str = Body("cv-stream", embed=True)) -> dict:
+        return stream_mgr.stop(camera_name)
+
+    @app.get("/stream/status")
+    def stream_status() -> dict:
+        return stream_mgr.status()
+
+    @app.get("/stream/events")
+    def stream_events(since: int = 0) -> dict:
+        return stream_mgr.events(since)
+
+    @app.get("/stream/preview")
+    def stream_preview(camera_name: str = "cv-stream") -> dict:
+        return stream_mgr.preview(camera_name)
+
+    @app.on_event("shutdown")
+    def _shutdown_streams() -> None:
+        stream_mgr.stop_all()
 
     return app
 

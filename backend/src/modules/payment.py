@@ -6,17 +6,22 @@ webhook'ом -> платёж paid + сессия paid. Провайдер — з
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, time, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import get_session
 from src.models import ParkingSession, Payment, PaymentStatus, SessionStatus
 from src.modules.payment_provider import MockPaymentProvider, PaymentProvider
-from src.schemas import PaymentCreate, PaymentOut, PaymentWebhook
+from src.schemas import (
+    BillingStatsOut,
+    PaymentCreate,
+    PaymentOut,
+    PaymentWebhook,
+)
 
 # Активный провайдер оплаты. Чтобы подключить реального — подставь его здесь.
 provider: PaymentProvider = MockPaymentProvider()
@@ -101,3 +106,38 @@ async def payment_webhook(payload: PaymentWebhook, session: SessionDep) -> Payme
         raise HTTPException(status_code=404, detail="Платёж не найден")
     await session.refresh(payment)
     return PaymentOut.model_validate(payment)
+
+
+@router.get("/dashboard/billing", response_model=BillingStatsOut)
+async def billing_stats(session: SessionDep) -> BillingStatsOut:
+    """Агрегации для дашборда денег (итерация 7)."""
+    today_start = datetime.combine(
+        datetime.now(timezone.utc).date(), time.min, tzinfo=timezone.utc
+    )
+    revenue = (
+        await session.execute(
+            select(func.coalesce(func.sum(Payment.amount), 0.0)).where(
+                Payment.status == PaymentStatus.PAID,
+                Payment.paid_at >= today_start,
+            )
+        )
+    ).scalar_one()
+    unpaid = (
+        await session.execute(
+            select(func.count())
+            .select_from(ParkingSession)
+            .where(ParkingSession.status == SessionStatus.UNPAID)
+        )
+    ).scalar_one()
+    avg_sec = (
+        await session.execute(
+            select(func.avg(ParkingSession.duration_seconds)).where(
+                ParkingSession.duration_seconds.is_not(None)
+            )
+        )
+    ).scalar_one()
+    return BillingStatsOut(
+        revenue_today=float(revenue),
+        unpaid_count=int(unpaid),
+        avg_parked_seconds=int(avg_sec) if avg_sec is not None else None,
+    )

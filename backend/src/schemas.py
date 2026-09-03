@@ -145,3 +145,11 @@ class PaymentOut(BaseModel):
     paid_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class BillingStatsOut(BaseModel):
+    """Агрегации для карточек дашборда денег."""
+
+    revenue_today: float
+    unpaid_count: int
+    avg_parked_seconds: int | None

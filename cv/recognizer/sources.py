@@ -128,6 +128,17 @@ class StreamSource:
     def _cv_target(self):  # noqa: ANN202 — int (индекс вебки) или str (url/файл)
         return int(self.target) if str(self.target).isdigit() else self.target
 
+    def _prepare_ffmpeg(self) -> None:
+        """RTSP тянем по TCP: через VPN/NAT UDP-медиа теряется и поток рвётся.
+
+        OpenCV читает эти опции из env при открытии VideoCapture (backend ffmpeg).
+        stimeout — таймаут сокета (мкс), чтобы не висеть вечно на мёртвом потоке.
+        """
+        if str(self.target).lower().startswith("rtsp://"):
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = (
+                "rtsp_transport;tcp|stimeout;5000000"
+            )
+
     def _sleep(self, seconds: float) -> None:
         """Спим маленькими шагами, чтобы быстро реагировать на stop()."""
         waited = 0.0
@@ -137,6 +148,7 @@ class StreamSource:
 
     def frames(self) -> Iterator[Frame]:
         interval = 1.0 / max(self.target_fps, 0.1)
+        self._prepare_ffmpeg()
         while not self._stop:
             cap = cv2.VideoCapture(self._cv_target())
             if not cap.isOpened():

@@ -50,12 +50,13 @@ async def test_duplicate_entry_updates_last_seen(db):
     assert total == 1
 
 
-async def test_entry_exit_closes_with_duration(db):
+async def test_entry_exit_closes_when_free(db):
+    # без активного тарифа парковка бесплатна -> шлагбаум открыт -> paid
     _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
     _, r3 = await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=30))
     assert r3.action == "closed"
     sess = await db.get(ParkingSession, r1.session_id)
-    assert sess.status == SessionStatus.UNPAID
+    assert sess.status == SessionStatus.PAID
     assert sess.duration_seconds == 1800
 
 
@@ -98,8 +99,8 @@ async def test_reentry_after_exit_creates_new_session(db):
     assert r2.session_id != r1.session_id
 
 
-async def test_exit_sets_price_from_active_tariff(db):
-    # активный тариф: 0 беспл, 100/час, без потолка
+async def test_exit_denied_when_unpaid(db):
+    # активный тариф 100/час; выезд без оплаты -> шлагбаум закрыт, сессия активна
     db.add(
         Tariff(
             name="t", free_minutes=0, price_per_hour=100, daily_cap=None, is_active=True
@@ -107,9 +108,13 @@ async def test_exit_sets_price_from_active_tariff(db):
     )
     await db.flush()
     _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
-    await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=2))
+    _, r3 = await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=2))
+    assert r3.action == "exit_denied_unpaid"
+    assert r3.detail == "due=200"
     sess = await db.get(ParkingSession, r1.session_id)
-    assert sess.price == 200  # 2 часа × 100
+    assert sess.status == SessionStatus.ACTIVE  # остался на парковке
+    assert sess.exit_time is None
+    assert sess.price == 200  # долг для отображения
 
 
 async def test_exit_without_tariff_leaves_price_none(db):
@@ -117,3 +122,4 @@ async def test_exit_without_tariff_leaves_price_none(db):
     await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=2))
     sess = await db.get(ParkingSession, r1.session_id)
     assert sess.price is None
+    assert sess.status == SessionStatus.PAID  # бесплатно -> выпущен

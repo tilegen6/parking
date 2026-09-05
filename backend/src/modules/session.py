@@ -6,9 +6,10 @@
     low_confidence, сессия НЕ создаётся (на ручную проверку в admin). (§2.4, §6.2)
   * ENTRY: есть активная сессия по номеру → обновить last_seen, новую не создавать
     (дубль/повторный въезд, §6.2); иначе — создать сессию status=active.
-  * EXIT: есть активная сессия → закрыть (exit_time, duration, status=unpaid);
-    нет — повтор выезда в окне дедупа игнорируем, иначе помечаем событие
-    event_without_session и уведомляем admin (§6.2).
+  * EXIT: есть активная сессия → считаем стоимость за фактическое время; если
+    оплачено < цены — ШЛАГБАУМ ЗАКРЫТ (сессия остаётся активной, нужна доплата),
+    иначе выпускаем (exit_time, status=paid). Нет активной — повтор выезда в окне
+    дедупа игнорируем, иначе event_without_session и уведомляем admin (§6.2).
 
 Сервис работает с НОРМАЛИЗОВАННЫМ событием (см. cv/contract/), не зная про Hikvision.
 """
@@ -33,7 +34,7 @@ from src.models import (
     RecognitionEvent,
     SessionStatus,
 )
-from src.modules.tariff import calculate_price, get_active_tariff
+from src.modules.tariff import get_active_tariff, tariff_price
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
 logger = logging.getLogger(__name__)
@@ -168,30 +169,44 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
         )
         return SessionResult("event_without_session")
 
+    # Стоимость за фактическое время стоянки по активному тарифу (ТЗ §3.4)
+    entry = _as_aware(active.entry_time)
+    exit_at = _as_aware(event.event_time)
+    duration = None
+    if entry is not None and exit_at is not None:
+        duration = int((exit_at - entry).total_seconds())
+        active.duration_seconds = duration
+    tariff = await get_active_tariff(session)
+    price = tariff_price(duration, tariff) if duration is not None else 0.0
+    if tariff is not None and duration is not None:
+        active.price = price
+    due = round(price - active.paid_amount, 2)
+
+    if due > 0.009:
+        # ШЛАГБАУМ ЗАКРЫТ: недоплата. Сессия остаётся активной — ждём (до)оплату.
+        active.last_seen = event.event_time
+        logger.info(
+            "EXIT ЗАПРЕЩЁН #%s (%s): нужна доплата %.0f (цена %.0f, оплачено %.0f)",
+            active.id,
+            event.plate_number,
+            due,
+            price,
+            active.paid_amount,
+        )
+        return SessionResult("exit_denied_unpaid", active.id, detail=f"due={due:.0f}")
+
+    # Оплачено (или бесплатно) — выпускаем, шлагбаум открыт
     active.exit_time = event.event_time
     active.last_seen = event.event_time
     active.exit_event_id = event.id
     active.exit_camera_id = event.camera_id
-    active.status = SessionStatus.UNPAID  # MVP v1 без оплаты (ТЗ §4.2)
-    entry = _as_aware(active.entry_time)
-    exit_at = _as_aware(event.event_time)
-    if entry is not None and exit_at is not None:
-        active.duration_seconds = int((exit_at - entry).total_seconds())
-    # Стоимость по активному тарифу (ТЗ §3.4); без тарифа price остаётся None
-    tariff = await get_active_tariff(session)
-    if tariff is not None and active.duration_seconds is not None:
-        active.price = calculate_price(
-            active.duration_seconds,
-            free_minutes=tariff.free_minutes,
-            price_per_hour=tariff.price_per_hour,
-            daily_cap=tariff.daily_cap,
-        )
+    active.status = SessionStatus.PAID
     logger.info(
-        "EXIT: закрыта сессия #%s (%s сек, %s) для %s",
+        "EXIT #%s (%s): выпущен (цена %.0f, оплачено %.0f)",
         active.id,
-        active.duration_seconds,
-        active.price,
         event.plate_number,
+        price,
+        active.paid_amount,
     )
     return SessionResult("closed", active.id)
 

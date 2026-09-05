@@ -116,8 +116,9 @@ class ParkingSession(Base):
     )
     duration_seconds: Mapped[int | None] = mapped_column(nullable=True)
 
-    # Стоимость: место под тарификацию (расчёт — вне scope этого блока)
+    # Стоимость (последняя посчитанная) + сколько уже оплачено (доплаты/шлагбаум)
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    paid_amount: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Связи с событиями распознавания (въезд/выезд)
     entry_event_id: Mapped[int | None] = mapped_column(

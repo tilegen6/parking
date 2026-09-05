@@ -46,6 +46,18 @@ def calculate_price(
     return round(total, 2)
 
 
+def tariff_price(duration_seconds: int, tariff: Tariff | None) -> float:
+    """Стоимость сессии по объекту тарифа (обёртка над calculate_price)."""
+    if tariff is None:
+        return 0.0
+    return calculate_price(
+        duration_seconds,
+        free_minutes=tariff.free_minutes,
+        price_per_hour=tariff.price_per_hour,
+        daily_cap=tariff.daily_cap,
+    )
+
+
 async def get_active_tariff(session: AsyncSession) -> Tariff | None:
     """Активный тариф (для расчёта стоимости сессии). Последний is_active."""
     result = await session.execute(

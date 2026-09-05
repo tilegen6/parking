@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.database import get_session
 from src.models import ParkingSession, Payment, PaymentStatus, SessionStatus
 from src.modules.payment_provider import MockPaymentProvider, PaymentProvider
+from src.modules.tariff import get_active_tariff, tariff_price
 from src.schemas import (
     BillingStatsOut,
     PaymentCreate,
@@ -27,17 +28,37 @@ from src.schemas import (
 provider: PaymentProvider = MockPaymentProvider()
 
 
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+async def amount_due(session: AsyncSession, parking: ParkingSession) -> float:
+    """Сколько сейчас должна сессия: цена за время стоянки минус уже оплачено.
+
+    Для активной берём «сейчас», для выехавшей — exit_time.
+    """
+    tariff = await get_active_tariff(session)
+    entry = _aware(parking.entry_time)
+    ref = _aware(parking.exit_time) or datetime.now(timezone.utc)
+    duration = int((ref - entry).total_seconds()) if entry is not None else 0
+    price = tariff_price(duration, tariff)
+    return round(max(0.0, price - (parking.paid_amount or 0.0)), 2)
+
+
 async def create_payment_for_session(
     session: AsyncSession, parking: ParkingSession
 ) -> Payment:
-    """Создать платёж по сессии (сумма = стоимость сессии)."""
-    amount = parking.price or 0.0
-    currency = "KZT"
-    pp = provider.create(amount, currency, reference=f"session-{parking.id}")
+    """Создать платёж на ТЕКУЩИЙ долг сессии (цена сейчас − уже оплачено)."""
+    due = await amount_due(session, parking)
+    if due <= 0:
+        raise HTTPException(status_code=400, detail="По сессии нечего оплачивать")
+    pp = provider.create(due, "KZT", reference=f"session-{parking.id}")
     payment = Payment(
         session_id=parking.id,
-        amount=amount,
-        currency=currency,
+        amount=due,
+        currency="KZT",
         status=PaymentStatus.PENDING,
         provider=provider.name,
         provider_payment_id=pp.provider_payment_id,
@@ -51,7 +72,7 @@ async def create_payment_for_session(
 async def mark_paid_by_provider_id(
     session: AsyncSession, provider_payment_id: str
 ) -> Payment | None:
-    """Подтвердить оплату (webhook): платёж -> paid, сессия -> paid. Идемпотентно."""
+    """Подтвердить оплату (webhook): платёж -> paid, копим paid_amount. Идемпотентно."""
     result = await session.execute(
         select(Payment).where(Payment.provider_payment_id == provider_payment_id)
     )
@@ -64,7 +85,10 @@ async def mark_paid_by_provider_id(
     payment.paid_at = datetime.now(timezone.utc)
     parking = await session.get(ParkingSession, payment.session_id)
     if parking is not None:
-        parking.status = SessionStatus.PAID
+        parking.paid_amount = round((parking.paid_amount or 0.0) + payment.amount, 2)
+        # Если уже выехал и теперь оплата покрыла долг — статус paid
+        if parking.exit_time is not None:
+            parking.status = SessionStatus.PAID
     await session.flush()
     return payment
 

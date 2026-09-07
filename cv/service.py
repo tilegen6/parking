@@ -222,9 +222,23 @@ class StreamManager:
             )
 
     def _stop_handle(self, handle: _Handle) -> None:
+        """Остановить поток: дождаться треда, дослать открытый трек, снять флаг.
+
+        Без flush() машина, которая в момент остановки ещё была в кадре, теряет
+        своё событие — трек так и не закрывается, проезд не доезжает до бэкенда.
+        """
         handle.source.stop()
         if handle.thread is not None:
             handle.thread.join(timeout=5)
+            if handle.thread.is_alive():
+                # Тред не умер (застрял на чтении) — не врём, что поток стоит.
+                handle.error = "поток не остановился за 5 с (тред жив)"
+                return
+        try:
+            for rec in handle.sp.flush():
+                self._add_event(handle, rec)
+        except Exception as e:  # noqa: BLE001
+            handle.error = f"flush при остановке: {e}"
         handle.running = False
 
     def stop(self, camera: str) -> dict:
@@ -233,13 +247,22 @@ class StreamManager:
         if handle is None:
             raise HTTPException(404, f"поток '{camera}' не запущен")
         self._stop_handle(handle)
-        return self.status(camera)
+        result = self.status(camera)
+        # Убираем из реестра: иначе остановленные потоки копятся в /stream/status
+        # и висят там до перезапуска сервиса.
+        with self._lock:
+            if handle.thread is None or not handle.thread.is_alive():
+                self._streams.pop(camera, None)
+        return result
 
     def stop_all(self) -> None:
         with self._lock:
-            handles = list(self._streams.values())
-        for h in handles:
+            handles = list(self._streams.items())
+        for name, h in handles:
             self._stop_handle(h)
+            with self._lock:
+                if h.thread is None or not h.thread.is_alive():
+                    self._streams.pop(name, None)
 
     def status(self, camera: str | None = None) -> dict:
         with self._lock:

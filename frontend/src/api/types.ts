@@ -74,6 +74,7 @@ export interface ParkingSession {
   // Вычисляется бэкендом: active = сейчас минус въезд, закрытая = duration_seconds
   parked_seconds: number | null;
   price: number | null;
+  paid_amount: number;
   entry_event_id: number | null;
   exit_event_id: number | null;
   entry_camera_id: number | null;
@@ -97,4 +98,51 @@ export interface SessionsFilters {
   status?: SessionStatus | "";
   date_from?: string;
   date_to?: string;
+}
+
+// Тарифы (соответствует src/schemas.py TariffOut)
+
+export interface Tariff {
+  id: number;
+  name: string;
+  free_minutes: number;
+  price_per_hour: number;
+  daily_cap: number | null;
+  currency: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TariffInput {
+  name: string;
+  free_minutes: number;
+  price_per_hour: number;
+  daily_cap: number | null;
+  currency?: string;
+  is_active?: boolean;
+}
+
+// Платежи (соответствует src/schemas.py PaymentOut)
+
+export type PaymentStatus = "pending" | "paid" | "failed";
+
+export interface Payment {
+  id: number;
+  session_id: number;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  provider: string;
+  provider_payment_id: string;
+  pay_url: string | null;
+  paid_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingStats {
+  revenue_today: number;
+  unpaid_count: number;
+  avg_parked_seconds: number | null;
 }

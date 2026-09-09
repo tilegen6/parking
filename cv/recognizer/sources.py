@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -95,6 +96,25 @@ class StreamStatus:
     last_error: str | None = None
 
 
+class _LatestFrame:
+    """Хранит только самый свежий кадр (для низкой задержки живого потока)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._img: np.ndarray | None = None
+        self.ended = False
+
+    def set(self, img: np.ndarray) -> None:
+        with self._lock:
+            self._img = img
+
+    def take(self) -> np.ndarray | None:
+        """Забрать свежий кадр и обнулить (следующий take вернёт None до нового)."""
+        with self._lock:
+            img, self._img = self._img, None
+            return img
+
+
 class StreamSource:
     """Живой поток: RTSP / MJPEG-http (телефон) / индекс вебки / видеофайл.
 
@@ -146,11 +166,30 @@ class StreamSource:
             time.sleep(min(0.2, seconds - waited))
             waited += 0.2
 
+    def _read_loop(self, cap, latest: _LatestFrame) -> None:  # noqa: ANN001
+        """Отдельный тред: тянет кадры на нативной скорости, храня лишь свежий.
+
+        Так буфер источника не копится: пока пайплайн распознаёт один кадр (в
+        Docker на CPU это небыстро), новые кадры не встают в очередь, а вытесняют
+        друг друга — задержка не растёт.
+        """
+        while not self._stop:
+            ok, img = cap.read()
+            if not ok:
+                latest.ended = True
+                return
+            latest.set(img)
+
     def frames(self) -> Iterator[Frame]:
         interval = 1.0 / max(self.target_fps, 0.1)
         self._prepare_ffmpeg()
         while not self._stop:
             cap = cv2.VideoCapture(self._cv_target())
+            # Просим минимальный внутренний буфер (где backend это поддерживает).
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            except Exception:  # noqa: BLE001 — не все backend'ы поддерживают
+                pass
             if not cap.isOpened():
                 cap.release()
                 self.status.opened = False
@@ -163,17 +202,20 @@ class StreamSource:
 
             self.status.opened = True
             self.status.last_error = None
-            last = 0.0
+            latest = _LatestFrame()
+            reader = threading.Thread(
+                target=self._read_loop, args=(cap, latest), daemon=True
+            )
+            reader.start()
             try:
                 while not self._stop:
-                    ok, img = cap.read()
-                    if not ok:
+                    time.sleep(interval)
+                    if latest.ended:
                         self.status.last_error = "поток прервался"
                         break
-                    now = time.monotonic()
-                    if now - last < interval:
-                        continue
-                    last = now
+                    img = latest.take()
+                    if img is None:
+                        continue  # свежего кадра ещё нет — ждём следующий тик
                     self.status.frames_read += 1
                     yield Frame(
                         img,
@@ -183,6 +225,7 @@ class StreamSource:
                     )
             finally:
                 cap.release()
+                reader.join(timeout=2)
 
             self.status.opened = False
             if not self.reconnect:

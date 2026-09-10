@@ -7,6 +7,9 @@ import type {
   Camera,
   DashboardStats,
   EventsFilters,
+  KaspiInfo,
+  KaspiPayResponse,
+  KaspiSimulateExit,
   PaginatedEvents,
   PaginatedSessions,
   ParkingSession,
@@ -158,6 +161,66 @@ export function useConfirmPaymentMock() {
     mutationFn: (providerPaymentId: string) =>
       api.post<Payment>("/api/v1/payments/webhook", {
         provider_payment_id: providerPaymentId,
+      }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+// Kaspi (онлайн-протокол провайдера + автосписание)
+
+/** Статус интеграции Kaspi (активный провайдер, включённые режимы). */
+export function useKaspiInfo() {
+  return useQuery({
+    queryKey: ["kaspi-info"],
+    queryFn: () => api.get<KaspiInfo>("/api/v1/kaspi/info"),
+  });
+}
+
+/** Эмулирует запрос Kaspi «check» — какая сумма к оплате по номеру авто. */
+export function useKaspiCheck() {
+  return useMutation({
+    mutationFn: (args: { plate: string; txnId: string }) =>
+      api.get<KaspiPayResponse>(
+        `/api/kaspi/pay${buildQuery({
+          command: "check",
+          account: args.plate,
+          txn_id: args.txnId,
+          sum: "0",
+          format: "json",
+        })}`,
+      ),
+  });
+}
+
+/** Эмулирует запрос Kaspi «pay» — провести оплату (идемпотентно по txn_id). */
+export function useKaspiPay() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { plate: string; sum: number; txnId: string }) =>
+      api.get<KaspiPayResponse>(
+        `/api/kaspi/pay${buildQuery({
+          command: "pay",
+          account: args.plate,
+          txn_id: args.txnId,
+          sum: args.sum.toFixed(2),
+          txn_date: new Date()
+            .toISOString()
+            .replace(/[-:T]/g, "")
+            .slice(0, 14),
+          format: "json",
+        })}`,
+      ),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+/** Пробное автосписание при выезде (Kaspi AutomaticPayments) — только DEBUG. */
+export function useKaspiSimulateExit() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) =>
+      api.post<KaspiSimulateExit>("/api/v1/kaspi/autopay/simulate-exit", {
+        session_id: sessionId,
       }),
     onSuccess: () => qc.invalidateQueries(),
   });

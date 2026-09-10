@@ -6,6 +6,10 @@ import {
   useActiveSessions,
   useConfirmPaymentMock,
   useCreatePayment,
+  useKaspiCheck,
+  useKaspiInfo,
+  useKaspiPay,
+  useKaspiSimulateExit,
   useTariffs,
 } from "../api/hooks";
 import type { Direction, ParkingSession, Tariff } from "../api/types";
@@ -32,6 +36,15 @@ const ACTION_META: Record<string, { label: string; cls: string }> = {
   ignored: { label: "проигнорировано", cls: "bg-slate-100 text-slate-500" },
   payment: { label: "💳 оплачено", cls: "bg-emerald-100 text-emerald-700" },
   payment_error: { label: "ошибка оплаты", cls: "bg-rose-100 text-rose-700" },
+  kaspi_check: { label: "Kaspi check", cls: "bg-sky-100 text-sky-700" },
+  kaspi_paid: { label: "💳 Kaspi оплачено", cls: "bg-emerald-100 text-emerald-700" },
+  kaspi_already: { label: "уже оплачено", cls: "bg-amber-100 text-amber-700" },
+  kaspi_autopay: { label: "💳 автосписание", cls: "bg-emerald-100 text-emerald-700" },
+  kaspi_autopay_denied: {
+    label: "автосписание отклонено",
+    cls: "bg-rose-100 text-rose-700",
+  },
+  kaspi_error: { label: "ошибка Kaspi", cls: "bg-rose-100 text-rose-700" },
 };
 
 interface LogRow {
@@ -72,9 +85,13 @@ export function StudioPage() {
   const tariffs = useTariffs();
   const createPayment = useCreatePayment();
   const confirmPayment = useConfirmPaymentMock();
+  const kaspiInfo = useKaspiInfo();
+  const kaspiCheck = useKaspiCheck();
+  const kaspiPay = useKaspiPay();
+  const kaspiSim = useKaspiSimulateExit();
   const counter = useRef(0);
 
-  const [tab, setTab] = useState<"kpp" | "cv">("kpp");
+  const [tab, setTab] = useState<"kpp" | "cv" | "kaspi">("kpp");
   const paying = createPayment.isPending || confirmPayment.isPending;
   // Открытое окно оплаты (QR + кнопка) — как на странице /pay
   const [payTarget, setPayTarget] = useState<{
@@ -176,6 +193,97 @@ export function StudioPage() {
     }
   }
 
+  // Уникальный txn_id для эмуляции запросов Kaspi (одинаковый → проверка идемпотентности)
+  const genTxn = () =>
+    `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const errMsg = (e: unknown) => (e instanceof Error ? e.message : "ошибка");
+
+  // Kaspi online: check — узнать сумму долга по номеру (эмулируем запрос Kaspi)
+  const kaspiDoCheck = (s: ParkingSession) =>
+    run(async () => {
+      try {
+        const res = await kaspiCheck.mutateAsync({
+          plate: s.plate_number,
+          txnId: genTxn(),
+        });
+        pushLog({
+          plate: s.plate_number,
+          action: "kaspi_check",
+          sessionId: s.id,
+          amount: res.sum ? Number(res.sum) : undefined,
+          note: `result=${res.result}`,
+        });
+      } catch (e) {
+        pushLog({
+          plate: s.plate_number,
+          action: "kaspi_error",
+          sessionId: s.id,
+          error: errMsg(e),
+        });
+      }
+    });
+
+  // Kaspi online: pay — провести оплату по номеру (идемпотентно по txn_id)
+  const kaspiDoPay = (s: ParkingSession, due: number) =>
+    run(async () => {
+      try {
+        const res = await kaspiPay.mutateAsync({
+          plate: s.plate_number,
+          sum: due,
+          txnId: genTxn(),
+        });
+        const action =
+          res.result === 0
+            ? "kaspi_paid"
+            : res.result === 3
+              ? "kaspi_already"
+              : "kaspi_error";
+        pushLog({
+          plate: s.plate_number,
+          action,
+          sessionId: s.id,
+          amount: res.sum ? Number(res.sum) : due,
+          note: res.prv_txn_id
+            ? `result=${res.result} · prv_txn ${res.prv_txn_id}`
+            : `result=${res.result}`,
+        });
+        qc.invalidateQueries();
+      } catch (e) {
+        pushLog({
+          plate: s.plate_number,
+          action: "kaspi_error",
+          sessionId: s.id,
+          error: errMsg(e),
+        });
+      }
+    });
+
+  // Kaspi autopay: пробное автосписание при выезде (что вернул бы Kaspi)
+  const kaspiDoSimulate = (s: ParkingSession) =>
+    run(async () => {
+      try {
+        const res = await kaspiSim.mutateAsync(s.id);
+        pushLog({
+          plate: s.plate_number,
+          action: res.is_success ? "kaspi_autopay" : "kaspi_autopay_denied",
+          sessionId: s.id,
+          amount: res.amount,
+          note: res.is_success
+            ? res.transaction_id
+              ? `txn ${res.transaction_id}`
+              : undefined
+            : (res.error_code ?? res.error_message ?? "ошибка"),
+        });
+      } catch (e) {
+        pushLog({
+          plate: s.plate_number,
+          action: "kaspi_autopay_denied",
+          sessionId: s.id,
+          error: errMsg(e),
+        });
+      }
+    });
+
   const cars = parking.data ?? [];
   // Должники: машины на парковке, у которых есть незакрытый долг по тарифу
   const owing = cars
@@ -200,6 +308,7 @@ export function StudioPage() {
       <div className="flex gap-1 border-b border-line">
         {[
           { id: "kpp" as const, label: "Эмуляция КПП" },
+          { id: "kaspi" as const, label: "Kaspi" },
           { id: "cv" as const, label: "Тест CV" },
         ].map((t) => (
           <button
@@ -541,76 +650,137 @@ export function StudioPage() {
       </div>
 
       {/* Лог */}
-      <div className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-          <div>
-            <div className="eyebrow">Результат</div>
-            <h3 className="font-display text-sm font-semibold text-ink">
-              Лог событий
-            </h3>
-          </div>
-          {log.length > 0 && (
-            <button
-              onClick={() => setLog([])}
-              className="text-xs text-ink-500/60 hover:text-sky-700"
-            >
-              очистить
-            </button>
-          )}
+      <LogCard log={log} onClear={() => setLog([])} />
         </div>
-        <ul className="divide-y divide-line">
-          {log.length === 0 && (
-            <li className="px-5 py-10 text-center text-sm text-ink-500/50">
-              Отправь событие или запусти сценарий
-            </li>
-          )}
-          {log.map((row) => {
-            const meta = ACTION_META[row.action];
-            return (
-              <li
-                key={row.key}
-                className="flex animate-fade-up items-center gap-4 px-5 py-3"
-              >
-                <span className="w-20 font-mono text-xs text-ink-500/50">
-                  {row.time}
-                </span>
-                <PlateReadout plate={row.plate} size="sm" />
-                {row.direction && (
-                  <span className="text-sm text-ink-500/70">
-                    {row.direction === "ENTRY" ? "Въезд" : "Выезд"}
-                  </span>
-                )}
-                {row.note && (
-                  <span className="rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[11px] text-amber-700">
-                    {row.note}
-                  </span>
-                )}
-                {row.amount != null && (
-                  <span className="font-mono text-sm font-semibold text-emerald-700">
-                    {formatMoney(row.amount)}
-                  </span>
-                )}
-                <span className="ml-auto">
-                  {row.error ? (
-                    <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
-                      ошибка: {row.error}
-                    </span>
-                  ) : (
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs font-medium ${
-                        meta?.cls ?? "bg-slate-100 text-slate-500"
-                      }`}
+      )}
+
+      {tab === "kaspi" && (
+        <div className="space-y-6">
+          {/* Статус интеграции Kaspi */}
+          <div className="card flex flex-wrap items-center gap-x-8 gap-y-3 p-5">
+            <div>
+              <div className="eyebrow">Kaspi.kz</div>
+              <div className="mt-1 font-display text-lg font-semibold text-ink">
+                Интеграция оплаты
+              </div>
+            </div>
+            <TariffFact
+              label="Активный провайдер"
+              value={kaspiInfo.data?.payment_provider ?? "…"}
+            />
+            <TariffFact
+              label="Онлайн-протокол"
+              value={
+                kaspiInfo.data
+                  ? kaspiInfo.data.provider_enabled
+                    ? "включён"
+                    : "выключен"
+                  : "…"
+              }
+            />
+            <TariffFact
+              label="Автосписание"
+              value={
+                kaspiInfo.data
+                  ? kaspiInfo.data.autopay_enabled
+                    ? "включено"
+                    : "выключено"
+                  : "…"
+              }
+            />
+          </div>
+
+          {/* Онлайн-протокол: оплата в приложении Kaspi по номеру авто */}
+          <div className="card p-5">
+            <div className="eyebrow">Онлайн-протокол · оплата по номеру</div>
+            <p className="mt-1 text-sm text-ink-500/70">
+              Эмулирует запросы, которые Kaspi шлёт нам, когда водитель платит в
+              приложении: <b>check</b> — узнать сумму долга по номеру,{" "}
+              <b>pay</b> — провести оплату (идемпотентно: повтор с тем же txn_id
+              не спишет дважды).
+            </p>
+            <div className="mt-4">
+              {owing.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">
+                  Долгов нет — оплачивать нечего
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {owing.map(({ session: s, due }) => (
+                    <div
+                      key={s.id}
+                      className="flex animate-fade-up items-center justify-between gap-3 rounded-xl border border-line bg-paper px-3 py-2.5"
                     >
-                      {meta?.label ?? row.action}
-                      {row.sessionId ? ` · #${row.sessionId}` : ""}
-                    </span>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
+                      <div className="flex items-center gap-3">
+                        <PlateReadout plate={s.plate_number} size="sm" />
+                        <span className="font-mono text-sm font-semibold text-ink">
+                          {formatMoney(due, activeTariff?.currency ?? "KZT")}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => kaspiDoCheck(s)}
+                          disabled={busy}
+                          className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink transition hover:border-sky disabled:opacity-50"
+                        >
+                          check
+                        </button>
+                        <button
+                          onClick={() => kaspiDoPay(s, due)}
+                          disabled={busy}
+                          className="rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white transition hover:bg-brand-dark disabled:opacity-50"
+                        >
+                          pay
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* AutomaticPayments: автосписание при выезде */}
+          <div className="card p-5">
+            <div className="eyebrow">AutomaticPayments · автосписание</div>
+            <p className="mt-1 text-sm text-ink-500/70">
+              Пробный вызов Kaspi «exit» — что вернул бы банк при списании долга с
+              привязанной карты. Реальное автосписание срабатывает при выезде,
+              если включён <span className="font-mono">KASPI_AUTOPAY_ENABLED</span>.
+            </p>
+            <div className="mt-4">
+              {owing.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-line py-8 text-center text-sm text-ink-500/50">
+                  Долгов нет — списывать нечего
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {owing.map(({ session: s, due }) => (
+                    <div
+                      key={s.id}
+                      className="flex animate-fade-up items-center justify-between gap-3 rounded-xl border border-line bg-paper px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <PlateReadout plate={s.plate_number} size="sm" />
+                        <span className="font-mono text-sm font-semibold text-ink">
+                          {formatMoney(due, activeTariff?.currency ?? "KZT")}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => kaspiDoSimulate(s)}
+                        disabled={busy}
+                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Симулировать списание
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <LogCard log={log} onClear={() => setLog([])} />
         </div>
       )}
 
@@ -642,6 +812,82 @@ export function StudioPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Лог событий стенда — общий для вкладок «КПП» и «Kaspi».
+function LogCard({ log, onClear }: { log: LogRow[]; onClear: () => void }) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+        <div>
+          <div className="eyebrow">Результат</div>
+          <h3 className="font-display text-sm font-semibold text-ink">
+            Лог событий
+          </h3>
+        </div>
+        {log.length > 0 && (
+          <button
+            onClick={onClear}
+            className="text-xs text-ink-500/60 hover:text-sky-700"
+          >
+            очистить
+          </button>
+        )}
+      </div>
+      <ul className="divide-y divide-line">
+        {log.length === 0 && (
+          <li className="px-5 py-10 text-center text-sm text-ink-500/50">
+            Отправь событие или запусти сценарий
+          </li>
+        )}
+        {log.map((row) => {
+          const meta = ACTION_META[row.action];
+          return (
+            <li
+              key={row.key}
+              className="flex animate-fade-up items-center gap-4 px-5 py-3"
+            >
+              <span className="w-20 font-mono text-xs text-ink-500/50">
+                {row.time}
+              </span>
+              <PlateReadout plate={row.plate} size="sm" />
+              {row.direction && (
+                <span className="text-sm text-ink-500/70">
+                  {row.direction === "ENTRY" ? "Въезд" : "Выезд"}
+                </span>
+              )}
+              {row.note && (
+                <span className="rounded bg-amber-50 px-1.5 py-0.5 font-mono text-[11px] text-amber-700">
+                  {row.note}
+                </span>
+              )}
+              {row.amount != null && (
+                <span className="font-mono text-sm font-semibold text-emerald-700">
+                  {formatMoney(row.amount)}
+                </span>
+              )}
+              <span className="ml-auto">
+                {row.error ? (
+                  <span className="rounded bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+                    ошибка: {row.error}
+                  </span>
+                ) : (
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs font-medium ${
+                      meta?.cls ?? "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {meta?.label ?? row.action}
+                    {row.sessionId ? ` · #${row.sessionId}` : ""}
+                  </span>
+                )}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

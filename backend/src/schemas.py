@@ -82,3 +82,38 @@ class PaginatedSessions(BaseModel):
     page: int
     limit: int
     pages: int
+
+
+# --- Tariff ---
+class TariffCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    free_minutes: int = Field(0, ge=0)
+    price_per_hour: float = Field(..., ge=0)
+    daily_cap: float | None = Field(None, ge=0)
+    currency: str = Field("KZT", max_length=8)
+    is_active: bool = True
+
+
+class TariffUpdate(BaseModel):
+    """Частичное обновление — все поля опциональны."""
+
+    name: str | None = Field(None, max_length=255)
+    free_minutes: int | None = Field(None, ge=0)
+    price_per_hour: float | None = Field(None, ge=0)
+    daily_cap: float | None = Field(None, ge=0)
+    currency: str | None = Field(None, max_length=8)
+    is_active: bool | None = None
+
+
+class TariffOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    free_minutes: int
+    price_per_hour: float
+    daily_cap: float | None
+    currency: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime

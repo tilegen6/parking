@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base
@@ -132,6 +132,31 @@ class ParkingSession(Base):
     exit_camera_id: Mapped[int | None] = mapped_column(
         ForeignKey("camera.id", ondelete="SET NULL"), nullable=True
     )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Tariff(Base):
+    """Тариф парковки (ТЗ §3.4): правила расчёта стоимости по времени.
+
+    parking_lot_id из ТЗ пока опущен — таблицы парковок ещё нет (один объект).
+    Активный тариф (is_active) используется для расчёта стоимости сессии.
+    """
+
+    __tablename__ = "tariff"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    free_minutes: Mapped[int] = mapped_column(default=0)  # бесплатный период
+    price_per_hour: Mapped[float] = mapped_column(Float)
+    daily_cap: Mapped[float | None] = mapped_column(Float, nullable=True)  # /сутки
+    currency: Mapped[str] = mapped_column(String(8), default="KZT")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

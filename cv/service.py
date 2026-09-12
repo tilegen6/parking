@@ -70,22 +70,60 @@ PIPELINE_VERSIONS: dict[str, dict] = {
     },
 }
 
-# какой питон-пакет нужен каждому движку/детектору (для проверки доступности)
-_PKG = {
-    "easyocr": "easyocr",
-    "fastplate": "fast_plate_ocr",
-    "yolo": "ultralytics",
-    "plate": "open_image_models",
+# Две независимые оси пайплайна. Детектор находит рамку номера на кадре, OCR
+# читает символы. Их можно комбинировать как угодно (пресеты выше — лишь готовые
+# связки). pkg — питон-пакет для проверки доступности (None = встроено, без сети).
+DETECTORS: dict[str, dict] = {
+    "plate": {
+        "label": "Спец-детектор (open-image-models)",
+        "desc": "YOLO-v9 ONNX, обучен на номерах — рекомендуется",
+        "pkg": "open_image_models",
+    },
+    "yolo": {
+        "label": "Обычный YOLOv8",
+        "desc": "generic-детектор (как в MVP)",
+        "pkg": "ultralytics",
+    },
+    "whole": {
+        "label": "Весь кадр (без детекции)",
+        "desc": "OCR по всему кадру — для синтетики/готовых кропов",
+        "pkg": None,
+    },
+}
+ENGINES: dict[str, dict] = {
+    "fastplate": {
+        "label": "fast-plate-ocr (спец. номера)",
+        "desc": "ONNX, мультирегион латиница — рекомендуется",
+        "pkg": "fast_plate_ocr",
+    },
+    "easyocr": {
+        "label": "EasyOCR (общий)",
+        "desc": "тяжелее, но читает и кириллицу",
+        "pkg": "easyocr",
+    },
+    "template": {
+        "label": "Template (офлайн)",
+        "desc": "шаблоны шрифта, без моделей/сети — для синтетики",
+        "pkg": None,
+    },
 }
 
 
-def _version_available(version: str) -> bool:
-    """Установлены ли пакеты, нужные этой версии пайплайна."""
+def _pkg_available(pkg: str | None) -> bool:
+    """Установлен ли питон-пакет (None = встроено, всегда доступно)."""
+    if pkg is None:
+        return True
     import importlib.util
 
+    return importlib.util.find_spec(pkg) is not None
+
+
+def _version_available(version: str) -> bool:
+    """Установлены ли пакеты, нужные этой связке (движок + детектор)."""
     v = PIPELINE_VERSIONS[version]
-    needed = [_PKG[k] for k in (v["engine"], v["detector"]) if k in _PKG]
-    return all(importlib.util.find_spec(m) is not None for m in needed)
+    return _pkg_available(ENGINES[v["engine"]]["pkg"]) and _pkg_available(
+        DETECTORS[v["detector"]]["pkg"]
+    )
 
 
 def _annotate(image: np.ndarray, plate: str | None, box) -> str:
@@ -106,7 +144,10 @@ class StreamStartReq(BaseModel):
     url: str  # rtsp://… | http://phone:8080/video | индекс вебки | "demo"
     direction: str = "entry"  # entry | exit (топология: камера въезда/выезда)
     camera_name: str = "cv-stream"
-    version: str | None = None  # версия пайплайна; по умолчанию — дефолт сервиса
+    version: str | None = None  # готовая связка (пресет); по умолчанию — дефолт
+    # Независимый выбор осей — переопределяет version, если задан хоть один:
+    engine: str | None = None  # OCR: fastplate | easyocr | template
+    detector: str | None = None  # детектор: plate | yolo | whole
     backend_url: str | None = None  # переопределить приёмник событий
 
 
@@ -152,13 +193,12 @@ class StreamManager:
         self._seq = 0
         self._lock = threading.Lock()
 
-    def _build(self, req: StreamStartReq, version: str):  # noqa: ANN202
-        # Реюзаем модели кэшированного пайплайна версии, но свой cfg с direction
-        base = self._pf(version)
-        v = PIPELINE_VERSIONS[version]
+    def _build(self, req: StreamStartReq, engine: str, detector: str):  # noqa: ANN202
+        # Реюзаем модели кэшированного пайплайна пары, но свой cfg с direction
+        base = self._pf(engine, detector)
         cfg = RecognizerConfig(
-            engine=v["engine"],
-            detector=v["detector"],
+            engine=engine,
+            detector=detector,
             confidence_threshold=self._base_conf,
             direction=req.direction,
             camera_name=req.camera_name,
@@ -177,14 +217,15 @@ class StreamManager:
             source = StreamSource(
                 req.url, target_fps=cfg.video_fps, name=req.camera_name
             )
-        return _Handle(req.camera_name, req.url, req.direction, version, source, sp)
+        label = f"{engine}+{detector}"
+        return _Handle(req.camera_name, req.url, req.direction, label, source, sp)
 
-    def start(self, req: StreamStartReq, version: str) -> dict:
+    def start(self, req: StreamStartReq, engine: str, detector: str) -> dict:
         with self._lock:
             old = self._streams.get(req.camera_name)
         if old is not None:
             self._stop_handle(old)
-        handle = self._build(req, version)
+        handle = self._build(req, engine, detector)
         handle.thread = threading.Thread(target=self._run, args=(handle,), daemon=True)
         with self._lock:
             self._streams[req.camera_name] = handle
@@ -325,6 +366,7 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
     )
     if default_version not in PIPELINE_VERSIONS:
         default_version = "fastplate"
+    dfl = PIPELINE_VERSIONS[default_version]
 
     app = FastAPI(title="Smart Parking CV Service", version="0.2.0")
     app.add_middleware(
@@ -334,20 +376,38 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # кэш пайплайнов по версии — модели каждой версии грузятся лениво при 1-м запросе
-    pipelines: dict[str, Pipeline] = {}
+    # кэш пайплайнов по паре (движок, детектор) — модели грузятся лениво при 1-м
+    # обращении к конкретной комбинации, повторный выбор её же — мгновенный.
+    pipelines: dict[tuple[str, str], Pipeline] = {}
 
-    def get_pipeline(version: str) -> Pipeline:
-        if version not in pipelines:
-            v = PIPELINE_VERSIONS[version]
-            pipelines[version] = Pipeline(
+    def get_pipeline(engine: str, detector: str) -> Pipeline:
+        key = (engine, detector)
+        if key not in pipelines:
+            pipelines[key] = Pipeline(
                 RecognizerConfig(
-                    engine=v["engine"],
-                    detector=v["detector"],
+                    engine=engine,
+                    detector=detector,
                     confidence_threshold=base_conf,
                 )
             )
-        return pipelines[version]
+        return pipelines[key]
+
+    def resolve(
+        version: str | None, engine: str | None, detector: str | None
+    ) -> tuple[str, str]:
+        """Эффективная пара (движок, детектор).
+
+        Приоритет: явно заданные engine/detector → пресет version → дефолт.
+        Так работает и старый вызов по version, и новый независимый выбор осей.
+        """
+        base = PIPELINE_VERSIONS.get(version or default_version, dfl)
+        eng = engine or base["engine"]
+        det = detector or base["detector"]
+        if eng not in ENGINES:
+            raise HTTPException(400, f"неизвестный OCR-движок: {eng}")
+        if det not in DETECTORS:
+            raise HTTPException(400, f"неизвестный детектор: {det}")
+        return eng, det
 
     stream_mgr = StreamManager(get_pipeline, base_conf)
 
@@ -366,21 +426,44 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
     def versions() -> dict:
         return {
             "default": default_version,
+            "default_engine": dfl["engine"],
+            "default_detector": dfl["detector"],
+            # готовые связки (для «в один клик»)
             "versions": [
                 {"name": k, "available": _version_available(k), **v}
                 for k, v in PIPELINE_VERSIONS.items()
+            ],
+            # две независимые оси — для раздельного выбора детектор / OCR
+            "detectors": [
+                {
+                    "name": k,
+                    "available": _pkg_available(v["pkg"]),
+                    "label": v["label"],
+                    "desc": v["desc"],
+                }
+                for k, v in DETECTORS.items()
+            ],
+            "engines": [
+                {
+                    "name": k,
+                    "available": _pkg_available(v["pkg"]),
+                    "label": v["label"],
+                    "desc": v["desc"],
+                }
+                for k, v in ENGINES.items()
             ],
         }
 
     @app.post("/recognize")
     async def recognize(
         file: UploadFile = File(...),
-        version: str = Form(default=default_version),
+        version: str | None = Form(default=None),
+        engine: str | None = Form(default=None),
+        detector: str | None = Form(default=None),
     ) -> dict:
         if cv2 is None:
             raise HTTPException(500, "opencv не установлен на сервере")
-        if version not in PIPELINE_VERSIONS:
-            raise HTTPException(400, f"неизвестная версия пайплайна: {version}")
+        eng, det = resolve(version, engine, detector)
         if file.size is not None and file.size > MAX_UPLOAD_BYTES:
             raise HTTPException(413, f"файл больше {MAX_UPLOAD_BYTES // 1048576} МБ")
         data = await file.read()
@@ -393,13 +476,12 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
             raise HTTPException(413, "изображение слишком большое (пикселей)")
 
         try:
-            res = get_pipeline(version).process_frame(img)
+            res = get_pipeline(eng, det).process_frame(img)
         except RuntimeError as e:
-            # движок версии не установлен в этом образе/окружении
+            # движок/детектор не установлен в этом образе/окружении
             raise HTTPException(400, str(e)) from e
         plate = res.plate if res and res.plate else None
         below = res.confidence < base_conf if res else True
-        v = PIPELINE_VERSIONS[version]
         return {
             "plate_number": plate,
             "confidence": round(res.confidence, 3) if res else None,
@@ -408,21 +490,19 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
             "candidates": res.alts if res else [],
             "annotated_image": _annotate(img, plate, res.box if res else None),
             "version": version,
-            "engine": v["engine"],
-            "detector": v["detector"],
+            "engine": eng,
+            "detector": det,
         }
 
     # ── Живой поток с камеры (RTSP/телефон) ──────────────────────────────
     @app.post("/stream/start")
     def stream_start(req: StreamStartReq) -> dict:
-        version = req.version or default_version
-        if version not in PIPELINE_VERSIONS:
-            raise HTTPException(400, f"неизвестная версия пайплайна: {version}")
         if req.direction not in ("entry", "exit"):
             raise HTTPException(400, "direction: entry | exit")
+        eng, det = resolve(req.version, req.engine, req.detector)
         try:
-            return stream_mgr.start(req, version)
-        except RuntimeError as e:  # движок версии не установлен / нет cv2
+            return stream_mgr.start(req, eng, det)
+        except RuntimeError as e:  # движок/детектор не установлен / нет cv2
             raise HTTPException(400, str(e)) from e
 
     @app.post("/stream/stop")

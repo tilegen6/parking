@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from src.config import settings
 from src.database import engine
-from src.modules import camera, payment, recognition, session, tariff
+from src.modules import camera, kaspi, payment, recognition, session, tariff
 from src.storage import storage
 
 logging.basicConfig(
@@ -78,3 +78,9 @@ app.include_router(camera.dashboard_router)
 app.include_router(session.router)
 app.include_router(tariff.router)
 app.include_router(payment.router)
+
+# Внутренний DEBUG-эндпоинт теста автосписания (сам себя гасит при DEBUG=false)
+app.include_router(kaspi.debug_router)
+# Входящий онлайн-протокол Kaspi монтируем только если включён (защита IP-allowlist)
+if settings.kaspi_provider_enabled:
+    app.include_router(kaspi.router)

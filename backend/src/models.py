@@ -2,7 +2,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base
@@ -190,8 +199,13 @@ class Payment(Base):
         String(16), default=PaymentStatus.PENDING, index=True
     )
     provider: Mapped[str] = mapped_column(String(32), default="mock")
-    # id платежа у провайдера — по нему приходит webhook
+    # id платежа у провайдера — по нему приходит webhook / идемпотентность.
+    # Для Kaspi онлайн — txn_id запроса; для autopay — requestId.
     provider_payment_id: Mapped[str] = mapped_column(String(64), index=True)
+    # Номер оплаты в системе провайдера (Kaspi transactionId / prv_txn), если есть
+    provider_txn_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Код ошибки провайдера для неуспешных попыток (напр. INSUFFICIENT_FUNDS)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     pay_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -202,4 +216,12 @@ class Payment(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Один успешный платёж на (провайдер, id платежа у провайдера): защита от
+    # двойного списания при повторном webhook/pay с тем же txn_id (Протокол §7).
+    __table_args__ = (
+        UniqueConstraint(
+            "provider", "provider_payment_id", name="uq_payment_provider_ref"
+        ),
     )

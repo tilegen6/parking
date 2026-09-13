@@ -1,13 +1,13 @@
-"""Провайдер оплаты — интерфейс + MOCK-заглушка (легко удалить/заменить).
+"""Провайдеры оплаты — интерфейс + реализации (mock и Kaspi онлайн).
 
-MockPaymentProvider имитирует внешнего провайдера (Kaspi Pay / Freedom Pay) без
-реальной оплаты: выдаёт id платежа и ссылку, а «оплата» подтверждается вызовом
-webhook из Студии/фронта. Никаких секретов, HTTPS и реального провайдера не нужно.
+MockPaymentProvider имитирует внешнего провайдера без реальной оплаты: выдаёт id
+платежа и ссылку, а «оплата» подтверждается вызовом webhook из Студии/фронта.
 
-Чтобы подключить реального провайдера:
-  1) реализуй класс по протоколу PaymentProvider (метод create),
-  2) подставь его в src/modules/payment.py вместо MockPaymentProvider,
-  3) удали этот файл (или оставь mock для локальных тестов).
+KaspiOnlineProvider — реальный Kaspi.kz (онлайн-протокол провайдера). create()
+формирует ссылку/QR (deeplink) на оплату в приложении Kaspi; само подтверждение
+оплаты приходит ВХОДЯЩИМ запросом Kaspi на GET /api/kaspi/pay (см. modules/kaspi).
+
+Активный провайдер выбирается в src/modules/payment.py по settings.payment_provider.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from typing import Protocol
+
+from src.config import settings
 
 
 @dataclass
@@ -42,3 +44,22 @@ class MockPaymentProvider:
         pid = f"mock_{uuid.uuid4().hex[:16]}"
         # pay_url — куда «пошёл бы» пользователь; в mock его дёргает Студия
         return ProviderPayment(provider_payment_id=pid, pay_url=f"/pay/{pid}")
+
+
+class KaspiOnlineProvider:
+    """Реальный Kaspi.kz (онлайн-протокол провайдера).
+
+    create() отдаёт deeplink/QR на оплату в приложении Kaspi (шаблон из настроек,
+    {account} = референс сессии). Подтверждение приходит ВХОДЯЩИМ запросом Kaspi
+    на /api/kaspi/pay — он и кредитует сессию, здесь платёж только инициируется.
+    """
+
+    name = "kaspi"
+
+    def create(self, amount: float, currency: str, reference: str) -> ProviderPayment:
+        pid = f"kaspi_{uuid.uuid4().hex[:16]}"
+        template = settings.kaspi_pay_deeplink_template
+        pay_url = (
+            template.replace("{account}", reference) if template else f"/pay/{pid}"
+        )
+        return ProviderPayment(provider_payment_id=pid, pay_url=pay_url)

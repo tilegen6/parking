@@ -27,10 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
 from src.database import get_session
+from src.integrations.kaspi_autopay import KaspiAutoPayClient
 from src.models import (
     Direction,
     EventFlag,
     ParkingSession,
+    Payment,
+    PaymentStatus,
     RecognitionEvent,
     SessionStatus,
 )
@@ -104,6 +107,80 @@ async def _recently_closed(
     return result.scalars().first()
 
 
+async def _autopay_enter(session: AsyncSession, parking: ParkingSession) -> None:
+    """Best-effort уведомить Kaspi о въезде (регистрация + бесплатное время).
+
+    Не влияет на результат обработки события: любые ошибки только логируются,
+    чтобы сбой Kaspi не ломал приём ANPR-событий.
+    """
+    if not settings.kaspi_autopay_enabled:
+        return
+    try:
+        await KaspiAutoPayClient().enter(
+            parking.plate_number,
+            parking.id,
+            free_time=settings.kaspi_free_time_seconds,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Kaspi autopay enter упал (не критично) для %s", parking.plate_number
+        )
+
+
+async def _autopay_exit(
+    session: AsyncSession, parking: ParkingSession, due: float
+) -> bool:
+    """Попытка автосписания долга через Kaspi при выезде.
+
+    Возвращает True, если списание прошло (сессию можно выпускать). При
+    USER_NOT_FOUND — водитель не подключил автосписание, откатываемся на ручную
+    оплату (False). Прочие ошибки (INSUFFICIENT_FUNDS и т.п.) фиксируем в Payment.
+    """
+    result = await KaspiAutoPayClient().exit(parking.plate_number, due, parking.id)
+    if result.is_success:
+        session.add(
+            Payment(
+                session_id=parking.id,
+                amount=due,
+                currency="KZT",
+                status=PaymentStatus.PAID,
+                provider="kaspi_autopay",
+                provider_payment_id=result.request_id,
+                provider_txn_id=result.transaction_id,
+                paid_at=datetime.now(timezone.utc),
+            )
+        )
+        parking.paid_amount = round((parking.paid_amount or 0.0) + due, 2)
+        logger.info(
+            "Kaspi autopay: сессия #%s (%s) списано %.2f (txn=%s)",
+            parking.id,
+            parking.plate_number,
+            due,
+            result.transaction_id,
+        )
+        return True
+
+    if result.error_code and result.error_code != "USER_NOT_FOUND":
+        # Фиксируем неуспешную попытку для разбора (карта отклонена, нет средств…)
+        session.add(
+            Payment(
+                session_id=parking.id,
+                amount=due,
+                currency="KZT",
+                status=PaymentStatus.FAILED,
+                provider="kaspi_autopay",
+                provider_payment_id=result.request_id,
+                error_code=result.error_code,
+            )
+        )
+    logger.info(
+        "Kaspi autopay не прошёл для %s: %s",
+        parking.plate_number,
+        result.error_code or "USER_NOT_FOUND",
+    )
+    return False
+
+
 async def handle_recognition_event(
     session: AsyncSession, event: RecognitionEvent
 ) -> SessionResult:
@@ -147,6 +224,7 @@ async def _handle_entry(
     session.add(parking)
     await session.flush()
     logger.info("ENTRY: открыта сессия #%s для %s", parking.id, event.plate_number)
+    await _autopay_enter(session, parking)
     return SessionResult("created", parking.id)
 
 
@@ -181,6 +259,18 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
     if tariff is not None and duration is not None:
         active.price = price
     due = round(price - active.paid_amount, 2)
+
+    # Автосписание Kaspi: пробуем списать долг с привязанной карты ДО отказа.
+    # Успех → списание учтено (due=0), сессию выпускаем; иначе — ручная оплата.
+    if due > 0.009 and settings.kaspi_autopay_enabled:
+        try:
+            if await _autopay_exit(session, active, due):
+                due = 0.0
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Kaspi autopay exit упал для %s — переходим к ручной оплате",
+                event.plate_number,
+            )
 
     if due > 0.009:
         # ШЛАГБАУМ ЗАКРЫТ: недоплата. Сессия остаётся активной — ждём (до)оплату.

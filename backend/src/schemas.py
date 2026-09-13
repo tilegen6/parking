@@ -142,6 +142,8 @@ class PaymentOut(BaseModel):
     status: str
     provider: str
     provider_payment_id: str
+    provider_txn_id: str | None = None
+    error_code: str | None = None
     pay_url: str | None
     paid_at: datetime | None
     created_at: datetime

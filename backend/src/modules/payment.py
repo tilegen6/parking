@@ -13,9 +13,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.config import settings
 from src.database import get_session
 from src.models import ParkingSession, Payment, PaymentStatus, SessionStatus
-from src.modules.payment_provider import MockPaymentProvider, PaymentProvider
+from src.modules.payment_provider import (
+    KaspiOnlineProvider,
+    MockPaymentProvider,
+    PaymentProvider,
+)
 from src.modules.tariff import get_active_tariff, tariff_price
 from src.schemas import (
     BillingStatsOut,
@@ -24,8 +29,15 @@ from src.schemas import (
     PaymentWebhook,
 )
 
-# Активный провайдер оплаты. Чтобы подключить реального — подставь его здесь.
-provider: PaymentProvider = MockPaymentProvider()
+
+def _select_provider() -> PaymentProvider:
+    """Активный провайдер оплаты по настройке PAYMENT_PROVIDER (mock | kaspi)."""
+    if settings.payment_provider == "kaspi":
+        return KaspiOnlineProvider()
+    return MockPaymentProvider()
+
+
+provider: PaymentProvider = _select_provider()
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -69,6 +81,22 @@ async def create_payment_for_session(
     return payment
 
 
+async def credit_session(
+    session: AsyncSession, session_id: int, amount: float
+) -> ParkingSession | None:
+    """Зачислить оплату в сессию: копим paid_amount; выехавшую переводим в paid.
+
+    Общий помощник для webhook (mock) и входящего Kaspi-протокола (modules/kaspi).
+    """
+    parking = await session.get(ParkingSession, session_id)
+    if parking is not None:
+        parking.paid_amount = round((parking.paid_amount or 0.0) + amount, 2)
+        # Если уже выехал и теперь оплата покрыла долг — статус paid
+        if parking.exit_time is not None:
+            parking.status = SessionStatus.PAID
+    return parking
+
+
 async def mark_paid_by_provider_id(
     session: AsyncSession, provider_payment_id: str
 ) -> Payment | None:
@@ -83,12 +111,7 @@ async def mark_paid_by_provider_id(
         return payment  # уже оплачено — идемпотентно, дубля не создаём
     payment.status = PaymentStatus.PAID
     payment.paid_at = datetime.now(timezone.utc)
-    parking = await session.get(ParkingSession, payment.session_id)
-    if parking is not None:
-        parking.paid_amount = round((parking.paid_amount or 0.0) + payment.amount, 2)
-        # Если уже выехал и теперь оплата покрыла долг — статус paid
-        if parking.exit_time is not None:
-            parking.status = SessionStatus.PAID
+    await credit_session(session, payment.session_id, payment.amount)
     await session.flush()
     return payment
 

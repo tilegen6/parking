@@ -9,6 +9,7 @@ import type {
   PaginatedEvents,
   PaginatedSessions,
   ParkingSession,
+  SessionStats,
   SessionsFilters,
 } from "./types";
 
@@ -48,7 +49,7 @@ export function useSessions(filters: SessionsFilters) {
     queryKey: ["sessions", filters],
     queryFn: () =>
       api.get<PaginatedSessions>(
-        `/api/v1/parking-sessions${buildQuery({ ...filters })}`,
+        `/api/v1/sessions${buildQuery({ ...filters })}`,
       ),
     // Автообновление — список сессий меняется по мере въезда/выезда машин
     refetchInterval: 5000,
@@ -59,7 +60,7 @@ export function useSessions(filters: SessionsFilters) {
 export function useActiveSessions() {
   return useQuery({
     queryKey: ["sessions", "active"],
-    queryFn: () => api.get<ParkingSession[]>("/api/v1/parking-sessions/active"),
+    queryFn: () => api.get<ParkingSession[]>("/api/v1/sessions/active"),
     // Машины на парковке обновляем чаще — это «живой» экран
     refetchInterval: 5000,
     placeholderData: (prev) => prev,
@@ -69,8 +70,16 @@ export function useActiveSessions() {
 export function useSession(id: number) {
   return useQuery({
     queryKey: ["session", id],
-    queryFn: () => api.get<ParkingSession>(`/api/v1/parking-sessions/${id}`),
+    queryFn: () => api.get<ParkingSession>(`/api/v1/sessions/${id}`),
     enabled: Number.isFinite(id),
+    refetchInterval: 5000,
+  });
+}
+
+export function useSessionStats() {
+  return useQuery({
+    queryKey: ["sessions", "stats"],
+    queryFn: () => api.get<SessionStats>("/api/v1/sessions/stats"),
     refetchInterval: 5000,
   });
 }

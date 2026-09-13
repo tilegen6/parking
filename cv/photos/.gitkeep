@@ -1,1 +1,0 @@
-# Кладите сюда фото номеров — затем: python recognize.py photos/ --engine easyocr --annotate

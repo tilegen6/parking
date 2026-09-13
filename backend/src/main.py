@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from src.config import settings
 from src.database import engine
-from src.modules import camera, recognition, session, tariff
+from src.modules import camera, recognition, session
 from src.storage import storage
 
 logging.basicConfig(
@@ -76,4 +76,3 @@ app.include_router(recognition.router)
 app.include_router(camera.router)
 app.include_router(camera.dashboard_router)
 app.include_router(session.router)
-app.include_router(tariff.router)

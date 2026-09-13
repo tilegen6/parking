@@ -1,40 +1,33 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useDashboardStats } from "../api/hooks";
 
-export function Header({ onMenu }: { onMenu?: () => void }) {
+export function Header() {
   const qc = useQueryClient();
   const { data, isError, isFetching } = useDashboardStats();
 
+  // Статус backend определяем по успешности запроса статистики
   const backendOnline = !isError && data !== undefined;
   const camerasOnline = data?.cameras_online ?? 0;
   const camerasTotal = data?.cameras_total ?? 0;
 
   return (
-    <header className="flex h-16 items-center justify-between border-b border-line bg-surface/80 px-4 backdrop-blur sm:px-6">
-      <div className="flex items-center gap-3">
-        <button
-          onClick={onMenu}
-          aria-label="Открыть меню"
-          className="rounded-lg border border-line px-2.5 py-1.5 text-ink-600 transition hover:border-sky lg:hidden"
-        >
-          ☰
-        </button>
-        <div>
-          <div className="eyebrow">Контроль КПП</div>
-          <h1 className="font-display text-base font-semibold text-ink">
-            Распознавание номеров
-          </h1>
-        </div>
-      </div>
+    <header className="flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
+      <h1 className="text-base font-semibold text-slate-700">
+        Система распознавания номеров
+      </h1>
 
-      <div className="flex items-center gap-2.5">
-        <span className="hidden sm:contents">
-          <Pill ok={backendOnline} label={backendOnline ? "Backend" : "Backend offline"} />
-          <Pill ok={camerasOnline > 0} label={`Камеры ${camerasOnline}/${camerasTotal}`} />
-        </span>
+      <div className="flex items-center gap-4">
+        <StatusDot
+          ok={backendOnline}
+          label={backendOnline ? "Backend online" : "Backend offline"}
+        />
+        <StatusDot
+          ok={camerasOnline > 0}
+          label={`Камеры ${camerasOnline}/${camerasTotal}`}
+        />
         <button
           onClick={() => qc.invalidateQueries()}
-          className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink-600 transition hover:border-sky hover:text-sky-700"
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
         >
           {isFetching ? "Обновление…" : "↻ Обновить"}
         </button>
@@ -43,20 +36,15 @@ export function Header({ onMenu }: { onMenu?: () => void }) {
   );
 }
 
-function Pill({ ok, label }: { ok: boolean; label: string }) {
+function StatusDot({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-line bg-paper px-3 py-1.5 text-xs font-medium text-ink-600">
-      <span className="relative flex h-2 w-2">
-        {ok && (
-          <span className="absolute inline-flex h-full w-full animate-pulse-ring rounded-full bg-emerald-400" />
-        )}
-        <span
-          className={`relative inline-flex h-2 w-2 rounded-full ${
-            ok ? "bg-emerald-500" : "bg-rose-500"
-          }`}
-        />
-      </span>
+    <div className="flex items-center gap-2 text-sm text-slate-600">
+      <span
+        className={`inline-block h-2.5 w-2.5 rounded-full ${
+          ok ? "bg-emerald-500" : "bg-rose-500"
+        }`}
+      />
       {label}
-    </span>
+    </div>
   );
 }

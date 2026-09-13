@@ -253,13 +253,13 @@ async def list_sessions(
         await session.execute(select(func.count()).select_from(base.subquery()))
     ).scalar_one()
 
-    sort_field = _SORT_FIELDS.get(sort, ParkingSession.entry_time)
-    order_by = sort_field.asc() if order == "asc" else sort_field.desc()
+    sort_col = _SORT_FIELDS.get(sort, ParkingSession.entry_time)
+    sort_col = sort_col.asc() if order == "asc" else sort_col.desc()
 
     rows = (
         (
             await session.execute(
-                base.order_by(order_by).offset((page - 1) * limit).limit(limit)
+                base.order_by(sort_col).offset((page - 1) * limit).limit(limit)
             )
         )
         .scalars()

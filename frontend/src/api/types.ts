@@ -56,30 +56,23 @@ export interface EventsFilters {
 
 // Парковочные сессии
 
-export type SessionStatus =
-  | "active"
-  | "paid"
-  | "unpaid"
-  | "cancelled"
-  | "whitelist";
+export type SessionStatus = "ACTIVE" | "COMPLETED";
 
 export interface ParkingSession {
   id: number;
-  plate_number: string;
+  plate_number: string | null;
   status: SessionStatus;
   entry_time: string;
   exit_time: string | null;
-  last_seen: string | null;
+  // Длительность стоянки в секундах. Для активных сессий backend может не
+  // присылать значение — тогда считаем от entry_time на клиенте.
   duration_seconds: number | null;
-  // Вычисляется бэкендом: active = сейчас минус въезд, закрытая = duration_seconds
-  parked_seconds: number | null;
-  price: number | null;
-  entry_event_id: number | null;
-  exit_event_id: number | null;
-  entry_camera_id: number | null;
-  exit_camera_id: number | null;
+  entry_camera_name: string | null;
+  exit_camera_name: string | null;
+  vehicle_photo_url: string | null;
+  plate_photo_url: string | null;
+  amount: number | null;
   created_at: string;
-  updated_at: string;
 }
 
 export interface PaginatedSessions {
@@ -88,6 +81,12 @@ export interface PaginatedSessions {
   page: number;
   limit: number;
   pages: number;
+}
+
+export interface SessionStats {
+  cars_on_parking: number;
+  entered_today: number;
+  exited_today: number;
 }
 
 export interface SessionsFilters {

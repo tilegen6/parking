@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+# Локальные данные/выводы — в образ не нужны
+datasets/
+out/
+photos/
+captures/
+recognizer/models/

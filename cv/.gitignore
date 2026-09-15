@@ -7,3 +7,18 @@ captures/*
 __pycache__/
 *.pyc
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Вывод распознавателя (events.jsonl, размеченные кадры, синтетика demo)
+out/
+
+# Фото номеров для распознавания (свои/тестовые) — не коммитим
+photos/*
+!photos/.gitkeep
+
+# Веса YOLO-модели детекции номеров (скачиваются автоматически)
+recognizer/models/
+
+# Скачанные датасеты для оценки
+datasets/

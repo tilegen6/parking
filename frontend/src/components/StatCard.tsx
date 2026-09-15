@@ -10,12 +10,12 @@ export function StatCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-500">
+    <div className="card p-5">
+      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-ink-500/70">
         <span>{icon}</span>
         {title}
       </div>
-      <div className="text-slate-800">{children}</div>
+      <div className="text-ink">{children}</div>
     </div>
   );
 }

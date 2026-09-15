@@ -110,13 +110,35 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      # Браузер обращается к backend по localhost (а не по имени docker-сети)
+      # Браузер обращается к сервисам по localhost (а не по именам docker-сети)
       VITE_API_URL: http://localhost:8000
+      # CV-сервис распознавания (страница «Тест CV»); поднимается с профилем cv
+      VITE_CV_URL: http://localhost:8090
     ports:
       - "5173:5173"
     depends_on:
       backend:
         condition: service_healthy
+
+  # ═══════════════════════════════════════════════════════════════
+  # CV-СЕРВИС: распознавание загруженного фото (страница «Тест CV»).
+  # Тяжёлый образ (torch+easyocr+yolo) -> отдельный профиль cv.
+  # Запуск всего: docker compose --profile cv up -d --build
+  # ═══════════════════════════════════════════════════════════════
+  cv:
+    build: ./cv
+    container_name: parking_cv
+    profiles: ["cv"]
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      CV_VERSION: ${CV_VERSION:-fastplate}
+      CV_CONFIDENCE: ${CV_CONFIDENCE:-0.5}
+    ports:
+      - "8090:8090"
+    volumes:
+      # Кэш ONNX-моделей (open-image-models + fast-plate-ocr) между перезапусками
+      - cv_cache:/root/.cache
 
   # ═══════════════════════════════════════════════════════════════
   # ЛОГИРОВАНИЕ: Loki (хранилище) + Promtail (сбор) + Grafana (UI)
@@ -355,3 +377,5 @@ volumes:
   alertmanager_data:
   alertmanager_config:
   postgres_backups:
+  # CV-сервис: кэш ONNX-моделей (open-image-models + fast-plate-ocr)
+  cv_cache:

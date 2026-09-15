@@ -31,13 +31,19 @@ export const directionBadgeClass: Record<Direction, string> = {
 };
 
 export const sessionStatusLabel: Record<SessionStatus, string> = {
-  ACTIVE: "На парковке",
-  COMPLETED: "Завершена",
+  active: "На парковке",
+  unpaid: "Выехал",
+  paid: "Оплачено",
+  cancelled: "Отменена",
+  whitelist: "Абонемент",
 };
 
 export const sessionStatusBadgeClass: Record<SessionStatus, string> = {
-  ACTIVE: "bg-emerald-100 text-emerald-700",
-  COMPLETED: "bg-slate-100 text-slate-500",
+  active: "bg-emerald-100 text-emerald-700",
+  unpaid: "bg-amber-100 text-amber-700",
+  paid: "bg-sky-100 text-sky-700",
+  cancelled: "bg-slate-100 text-slate-500",
+  whitelist: "bg-sky-100 text-sky-700",
 };
 
 // Длительность стоянки в человекочитаемом виде: «2 ч 5 мин», «14 мин», «45 сек».
@@ -74,4 +80,20 @@ export function sessionDurationSeconds(session: {
 export function formatAmount(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
   return `${value.toLocaleString("ru-RU")} ₸`;
+}
+
+// Относительное время: «только что», «5 мин назад», «3 ч назад», «2 д назад».
+export function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "—";
+  const sec = Math.floor((Date.now() - t) / 1000);
+  if (sec < 0) return "—";
+  if (sec < 10) return "только что";
+  if (sec < 60) return `${sec} сек назад`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} мин назад`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} ч назад`;
+  return `${Math.floor(hr / 24)} д назад`;
 }

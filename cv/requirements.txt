@@ -1,5 +1,15 @@
-# cv integration lab dependencies
+# cv integration lab + own CV recognizer (own-cv-v1) dependencies
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20
 httpx==0.28.1
+
+# own CV recognizer — лёгкий движок (без torch)
+numpy>=1.26
+opencv-python-headless>=4.9
+# Опциональный тяжёлый OCR (--engine easyocr) тянет torch; ставится по необходимости:
+# pip install easyocr certifi   # certifi нужен для скачивания моделей EasyOCR на macOS
+# Опциональная YOLO-детекция пластины (--detector yolo) для грязных полнокадровых фото:
+# pip install ultralytics       # модель детекции номеров скачивается автоматически
+# РЕКОМЕНДУЕТСЯ: спец-движок номеров (--engine fastplate --detector plate), ONNX, без torch:
+# pip install "fast-plate-ocr[onnx]" "open-image-models[onnx]" certifi

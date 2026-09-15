@@ -269,7 +269,8 @@ class DemoSource:
 
     def _canvas(self) -> np.ndarray:
         h, w = self.size
-        # светлый фон: template-OCR читает чёрные глифы на белом (пустой кадр = «нет номера»)
+        # светлый фон: template-OCR читает чёрные глифы на белом
+        # (пустой кадр = «нет номера»)
         return np.full((h, w, 3), 235, dtype=np.uint8)
 
     def _scene(self, plate_img: np.ndarray) -> np.ndarray:

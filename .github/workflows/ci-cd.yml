@@ -227,9 +227,17 @@ jobs:
           - service: backend
             context: ./backend
             image: backend
+            dockerfile: ./backend/Dockerfile
+            build_args: ""
           - service: frontend
             context: ./frontend
             image: frontend
+            # Прод-образ фронта (nginx + статика), не dev-Dockerfile
+            dockerfile: ./frontend/Dockerfile.prod
+            # Публичный адрес API вшивается в бандл на этапе сборки (Vite).
+            # PROD_DOMAIN — repo variable (Settings → Variables).
+            build_args: |
+              VITE_API_URL=https://${{ vars.PROD_DOMAIN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -257,16 +265,52 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          # format=long → тег sha-<полный sha>, совпадает с github.sha в деплое
           tags: |
-            type=sha,prefix=sha-
+            type=sha,prefix=sha-,format=long
             type=raw,value=latest
 
       - name: Build & Push
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
+          build-args: ${{ matrix.build_args }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
+
+  # ─────────────────────────────────────────────
+  # 5. DEPLOY → VPS (только main, с ручным подтверждением)
+  # ─────────────────────────────────────────────
+  deploy:
+    name: "Deploy to VPS"
+    needs: [build-and-push]
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    # Protected environment → деплой ждёт ручного подтверждения (required reviewers)
+    environment: production
+    # Не отменяем идущий деплой и не запускаем два параллельно
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy over SSH (pull GHCR images + compose up)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd /opt/smart-parking
+            git pull --ff-only
+            export IMAGE_TAG=sha-${{ github.sha }}
+            COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile backup"
+            $COMPOSE pull
+            $COMPOSE up -d
+            docker image prune -f

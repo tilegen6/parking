@@ -1,0 +1,78 @@
+# Продакшн edge-reverse-proxy: TLS-терминация + маршрутизация.
+#
+# Рендерится образом nginx автоматически (envsubst по /etc/nginx/templates/*.template):
+# подставляется ТОЛЬКО ${DOMAIN} — переменные nginx ($host, $uri, $remote_addr …)
+# не входят в окружение и остаются нетронутыми.
+#
+# ${DOMAIN} задаётся в .env на сервере. Сертификаты — из тома letsencrypt,
+# ACME-челлендж — из тома acme_webroot (см. docker-compose.prod.yml).
+
+upstream backend {
+    server backend:8000;
+}
+upstream minio {
+    server minio:9000;
+}
+
+# ── HTTP :80 — ACME-челлендж Let's Encrypt + редирект на HTTPS ──────
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS :443 ─────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    client_max_body_size 25m;  # фото с камеры могут быть тяжёлыми
+
+    # --- Backend API ---
+    # X-Forwarded-For обязателен: по нему backend проверяет IP Kaspi (core/security.py)
+    location /api/ {
+        proxy_pass http://backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /health {
+        proxy_pass http://backend/health;
+    }
+    location /docs {
+        proxy_pass http://backend/docs;
+    }
+    location /openapi.json {
+        proxy_pass http://backend/openapi.json;
+    }
+
+    # --- Фото из MinIO ---
+    location /photos/ {
+        rewrite ^/photos/(.*)$ /$1 break;
+        proxy_pass http://minio;
+        proxy_set_header Host $host;
+    }
+
+    # --- Frontend (статика из контейнера frontend, nginx на :80) ---
+    location / {
+        proxy_pass http://frontend:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}

@@ -17,6 +17,11 @@ from src.modules import session as svc
 T0 = datetime(2026, 6, 13, 10, 0, 0, tzinfo=timezone.utc)
 
 
+def _naive(dt: datetime) -> datetime:
+    """SQLite отдаёт naive UTC — сравниваем даты без tzinfo."""
+    return dt.replace(tzinfo=None)
+
+
 async def _emit(db, plate, direction, t, conf=0.95, cam=None):
     event = RecognitionEvent(
         plate_number=plate,
@@ -39,15 +44,61 @@ async def test_entry_creates_active_session(db):
     assert sess.exit_time is None
 
 
-async def test_duplicate_entry_updates_last_seen(db):
-    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
-    _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(seconds=5))
-    assert r2.action == "updated_last_seen"
+async def test_duplicate_entry_restarts_session_start(db):
+    """Машина стоит перед шлагбаумом: старт = ПОСЛЕДНЕЕ событие серии + пометка."""
+    e1, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    t2 = T0 + timedelta(seconds=5)
+    e2, r2 = await _emit(db, "123ABC02", Direction.ENTRY, t2)
+    assert r2.action == "entry_restarted"
     assert r2.session_id == r1.session_id
+    sess = await db.get(ParkingSession, r1.session_id)
+    assert _naive(sess.entry_time) == _naive(t2)  # старт сдвинут на последнее
+    assert sess.entry_adjusted is True  # пометка для разборов
+    assert sess.entry_event_id == e2.id
     total = (
         await db.execute(select(func.count()).select_from(ParkingSession))
     ).scalar_one()
     assert total == 1
+
+
+async def test_duplicate_entry_outside_window_keeps_start(db):
+    """Повторное распознавание давно стоящей машины не обнуляет счёт."""
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    late = T0 + timedelta(hours=2)  # много позже entry_restart_window
+    _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, late)
+    assert r2.action == "updated_last_seen"
+    sess = await db.get(ParkingSession, r1.session_id)
+    assert _naive(sess.entry_time) == _naive(T0)  # старт НЕ сдвинут
+    assert sess.entry_adjusted is False
+    assert _naive(sess.last_seen) == _naive(late)
+
+
+async def test_duplicate_entry_series_billed_from_last(db):
+    """Счёт идёт от последнего дубля: 10 мин у шлагбаума не тарифицируются."""
+    db.add(
+        Tariff(
+            name="Тест",
+            free_minutes=0,
+            price_per_hour=200,
+            daily_cap=None,
+            currency="KZT",
+            is_active=True,
+        )
+    )
+    await db.flush()
+    await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    # серия дублей: машина стоит перед шлагбаумом 10 минут
+    for m in (3, 6, 10):
+        _, r = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(minutes=m))
+        assert r.action == "entry_restarted"
+    # выезд через 1 час ПОСЛЕ последнего дубля: без сдвига было бы 70 мин ->
+    # ceil 2 часа -> 400; со сдвигом ровно 1 час -> 200 (долг, шлагбаум закрыт)
+    _, rx = await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=70))
+    assert rx.action == "exit_denied_unpaid"
+    assert rx.detail == "due=200"
+    sess = await db.get(ParkingSession, rx.session_id)
+    assert sess.duration_seconds == 3600
+    assert sess.price == 200.0
 
 
 async def test_entry_exit_closes_when_free(db):

@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     recognition_min_confidence: float = 0.85
     # Окно дедупликации повторных событий одного номера, секунд
     session_dedup_window_seconds: int = 30
+    # Серия дублей ENTRY (машина стоит перед шлагбаумом): пока события идут не
+    # реже этого окна, старт сессии сдвигается на последнее из них. Вне окна —
+    # повторное распознавание давно стоящей машины, счёт не обнуляем.
+    entry_restart_window_seconds: int = 600
 
     # --- CORS ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"

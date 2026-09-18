@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 class SessionResult:
     """Результат обработки события (для логов/ответа эндпоинта)."""
 
-    action: str  # created | updated_last_seen | closed | event_without_session
+    action: str  # created | entry_restarted | updated_last_seen | closed | ...
     #              | low_confidence | duplicate_exit | ignored
     session_id: int | None = None
     detail: str = ""
@@ -208,9 +208,44 @@ async def _handle_entry(
 ) -> SessionResult:
     active = await find_active_session(session, event.plate_number)  # type: ignore[arg-type]
     if active is not None:
-        # Дубль / повторный въезд (ТЗ §6.2): новую не создаём, освежаем last_seen
+        # Дубль / повторный въезд (ТЗ §6.2): новую сессию не создаём.
+        #
+        # Машина стоит перед шлагбаумом и камера видит её несколько раз подряд —
+        # стартом сессии считаем ПОСЛЕДНЕЕ событие серии (решение клиента):
+        # водитель не платит за ожидание снаружи. Помечаем entry_adjusted,
+        # полная история событий остаётся в recognition_event.
+        #
+        # Сдвигаем только пока дубли идут «подряд» (entry_restart_window) и
+        # только вперёд — повторное распознавание машины, давно стоящей на
+        # территории, не должно обнулять счёт.
+        window = timedelta(seconds=settings.entry_restart_window_seconds)
+        ev_at = _as_aware(event.event_time)
+        last = _as_aware(active.last_seen) or _as_aware(active.entry_time)
+        entry = _as_aware(active.entry_time)
+        if (
+            ev_at is not None
+            and last is not None
+            and entry is not None
+            and entry <= ev_at
+            and (ev_at - last) <= window
+        ):
+            active.entry_time = event.event_time
+            active.last_seen = event.event_time
+            active.entry_event_id = event.id
+            if event.camera_id is not None:
+                active.entry_camera_id = event.camera_id
+            active.entry_adjusted = True
+            logger.info(
+                "ENTRY дубль: %s → старт сессии сдвинут на последнее событие",
+                event.plate_number,
+            )
+            return SessionResult("entry_restarted", active.id)
+
         active.last_seen = event.event_time
-        logger.info("ENTRY дубль: %s → обновлён last_seen", event.plate_number)
+        logger.info(
+            "ENTRY дубль (вне окна): %s → обновлён только last_seen",
+            event.plate_number,
+        )
         return SessionResult("updated_last_seen", active.id)
 
     parking = ParkingSession(

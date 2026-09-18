@@ -67,6 +67,8 @@ class ParkingSessionOut(BaseModel):
     parked_seconds: int | None = None
     price: float | None
     paid_amount: float = 0.0
+    # Старт сессии сдвигался на последнее событие серии дублей у шлагбаума
+    entry_adjusted: bool = False
     entry_event_id: int | None
     exit_event_id: int | None
     entry_camera_id: int | None

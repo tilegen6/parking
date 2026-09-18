@@ -129,6 +129,11 @@ class ParkingSession(Base):
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
     paid_amount: Mapped[float] = mapped_column(Float, default=0.0)
 
+    # Машина стояла перед шлагбаумом и распознавалась несколько раз: старт
+    # сессии сдвинут на ПОСЛЕДНЕЕ событие серии (решение клиента). Пометка
+    # остаётся для разборов — полная история в recognition_event.
+    entry_adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Связи с событиями распознавания (въезд/выезд)
     entry_event_id: Mapped[int | None] = mapped_column(
         ForeignKey("recognition_event.id", ondelete="SET NULL"), nullable=True

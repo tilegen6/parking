@@ -6,6 +6,10 @@
 достаточно кадров и majority-vote дал номер. Кулдаун по номеру гасит повторы
 (мигание, остановка на линии).
 
+Перед распознаванием кадр проходит фильтр качества (смаз/темнота): мусорные
+чтения портят голосование. Отбракованный кадр не отменяет старение треков —
+иначе машина, уехавшая на серии плохих кадров, не «закрылась» бы вовсе.
+
 Один проезд = ровно одно событие. Направление берётся из конфига потока
 (топология: камера въезда / камера выезда).
 """
@@ -19,6 +23,7 @@ from dataclasses import dataclass, field
 from .config import RecognizerConfig
 from .normalize import normalize_plate
 from .pipeline import FrameResult
+from .quality import frame_ok
 from .track import SimpleTracker
 from .vote import MajorityVote
 
@@ -58,6 +63,7 @@ class StreamPipeline:
         # наблюдаемость (для /stream/status и /stream/preview)
         self.frames_seen = 0
         self.events_emitted = 0
+        self.frames_dropped = 0  # отсеяно фильтром качества (смаз/темнота)
         self.last_frame: object = None
         self.last_res: FrameResult | None = None
         self.last_plate: str | None = None
@@ -65,6 +71,18 @@ class StreamPipeline:
     def process(self, frame) -> list[dict]:  # noqa: ANN001
         """Обработать один кадр; вернуть события, эмитнутые на этом кадре."""
         self.frames_seen += 1
+
+        # Фильтр качества (ТЗ 2.1): смазанные и тёмные кадры не гоним в OCR —
+        # мусорные чтения искажают голосование именно ночью и в движении.
+        # ВАЖНО: трекер всё равно обновляем — иначе треки не стареют, и машина,
+        # уехавшая на серии плохих кадров, никогда не «закроется» (событие
+        # потеряется совсем). Плохой кадр = кадр без детекций, не пауза.
+        if not frame_ok(frame.image, self.cfg.blur_threshold, self.cfg.dark_threshold):
+            self.frames_dropped += 1
+            self.last_frame = frame
+            self.tracker.update([])
+            return self._collect_closed()
+
         res = self.pipeline.process_frame(frame.image)
         self.last_frame = frame
         self.last_res = res

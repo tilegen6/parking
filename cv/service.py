@@ -324,6 +324,8 @@ class StreamManager:
                     "running": h.running,
                     "error": h.error,
                     "frames": h.sp.frames_seen,
+                    # отсеяно фильтром качества — растёт при плохом освещении/смазе
+                    "frames_dropped": getattr(h.sp, "frames_dropped", 0),
                     "events": h.sp.events_emitted,
                     "last_plate": h.sp.last_plate,
                     "opened": getattr(src, "opened", None),

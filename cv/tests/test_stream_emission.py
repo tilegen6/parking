@@ -73,7 +73,12 @@ def _feed(sp: StreamPipeline, pipe: _FakePipeline, seq: list) -> list[dict]:
 
 def _make(cfg: RecognizerConfig | None = None, clock=None):
     pipe = _FakePipeline()
-    cfg = cfg or RecognizerConfig(min_hits=3, cooldown_seconds=60)
+    # Пороги качества обнулены: кадры здесь синтетические (однотонные), их отсеял
+    # бы фильтр смаза/темноты, а эти тесты проверяют ЛОГИКУ ЭМИССИИ, а не качество
+    # кадра. Сам фильтр проверяется отдельно — tests/test_stream_quality_gate.py.
+    cfg = cfg or RecognizerConfig(
+        min_hits=3, cooldown_seconds=60, blur_threshold=0.0, dark_threshold=0.0
+    )
     sp = StreamPipeline(pipe, cfg, sinks={}, clock=clock or (lambda: 0.0))
     return sp, pipe
 
@@ -104,7 +109,11 @@ def test_flicker_within_track_still_one_event():
 
 def test_below_min_hits_not_emitted():
     # машина мелькнула всего 2 кадра -> ниже порога min_hits -> нет события
-    sp, pipe = _make(RecognizerConfig(min_hits=3, cooldown_seconds=60))
+    sp, pipe = _make(
+        RecognizerConfig(
+            min_hits=3, cooldown_seconds=60, blur_threshold=0.0, dark_threshold=0.0
+        )
+    )
     emitted = _feed(sp, pipe, _pass("127AST02", n=2) + GAP)
     assert emitted == []
 
@@ -112,7 +121,10 @@ def test_below_min_hits_not_emitted():
 def test_same_plate_suppressed_within_cooldown_then_emitted_after():
     t = {"v": 0.0}
     sp, pipe = _make(
-        RecognizerConfig(min_hits=3, cooldown_seconds=60), clock=lambda: t["v"]
+        RecognizerConfig(
+            min_hits=3, cooldown_seconds=60, blur_threshold=0.0, dark_threshold=0.0
+        ),
+        clock=lambda: t["v"],
     )
 
     first = _feed(sp, pipe, _pass("127AST02") + GAP)  # emit @ t=0

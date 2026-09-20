@@ -39,13 +39,19 @@ class SessionStatus:
     UNPAID = "unpaid"  # выехал без оплаты (в MVP v1 — обычный выезд)
     CANCELLED = "cancelled"  # отменена вручную админом
     WHITELIST = "whitelist"  # бесплатный въезд по белому списку (v2)
+    # ТС-3: новый въезд при зависшей активной (пропущенный выезд) — старую
+    # закрываем этим статусом и выводим на ручную проверку
+    AUTO_CLOSED = "auto_closed"
 
 
 class EventFlag:
-    """Флаги аномальных событий распознавания (ТЗ §6.2)."""
+    """Флаги аномальных событий распознавания (ТЗ §6.2) — очередь ручной проверки."""
 
     LOW_CONFIDENCE = "low_confidence"  # confidence < порога / номер не распознан
     EVENT_WITHOUT_SESSION = "event_without_session"  # выезд без активной сессии
+    DUPLICATE = "duplicate"  # ТС-2: повторное событие того же номера
+    UNKNOWN_DIRECTION = "unknown_direction"  # ТС-7: направление не определено
+    POSSIBLE_MISREAD = "possible_misread"  # ТС-9: похож на активный номер (±1 символ)
 
 
 class Camera(Base):

@@ -51,6 +51,7 @@ async def test_duplicate_entry_restarts_session_start(db):
     e2, r2 = await _emit(db, "123ABC02", Direction.ENTRY, t2)
     assert r2.action == "entry_restarted"
     assert r2.session_id == r1.session_id
+    assert e2.flag == EventFlag.DUPLICATE  # ТС-2: событие помечено как дубль
     sess = await db.get(ParkingSession, r1.session_id)
     assert _naive(sess.entry_time) == _naive(t2)  # старт сдвинут на последнее
     assert sess.entry_adjusted is True  # пометка для разборов
@@ -62,15 +63,17 @@ async def test_duplicate_entry_restarts_session_start(db):
 
 
 async def test_duplicate_entry_outside_window_keeps_start(db):
-    """Повторное распознавание давно стоящей машины не обнуляет счёт."""
+    """Повторное распознавание стоящей машины (вне окна сдвига) не обнуляет счёт."""
     _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
-    late = T0 + timedelta(hours=2)  # много позже entry_restart_window
-    _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, late)
+    # > entry_restart_window (10 мин), но < порога ТС-3 (1 час)
+    mid = T0 + timedelta(minutes=30)
+    e2, r2 = await _emit(db, "123ABC02", Direction.ENTRY, mid)
     assert r2.action == "updated_last_seen"
+    assert e2.flag == EventFlag.DUPLICATE  # ТС-2: событие помечено как дубль
     sess = await db.get(ParkingSession, r1.session_id)
     assert _naive(sess.entry_time) == _naive(T0)  # старт НЕ сдвинут
     assert sess.entry_adjusted is False
-    assert _naive(sess.last_seen) == _naive(late)
+    assert _naive(sess.last_seen) == _naive(mid)
 
 
 async def test_duplicate_entry_series_billed_from_last(db):
@@ -174,3 +177,79 @@ async def test_exit_without_tariff_leaves_price_none(db):
     sess = await db.get(ParkingSession, r1.session_id)
     assert sess.price is None
     assert sess.status == SessionStatus.PAID  # бесплатно -> выпущен
+
+
+# ── ТС-3: повторный въезд без выезда через большой промежуток ──────────────
+
+
+async def test_reentry_after_gap_closes_old_creates_new(db):
+    """Пропущенный выезд: старую сессию -> auto_closed, новую открыть."""
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(hours=2))
+    assert r2.action == "reentry_new_session"
+    assert r2.session_id != r1.session_id
+    old = await db.get(ParkingSession, r1.session_id)
+    new = await db.get(ParkingSession, r2.session_id)
+    assert old.status == SessionStatus.AUTO_CLOSED
+    assert old.exit_time is None  # реальный момент выезда неизвестен
+    assert new.status == SessionStatus.ACTIVE
+    assert _naive(new.entry_time) == _naive(T0 + timedelta(hours=2))
+
+
+# ── ТС-7: направление UNKNOWN ───────────────────────────────────────────────
+
+
+async def test_unknown_direction_flags_event_no_session(db):
+    event, r = await _emit(db, "123ABC02", Direction.UNKNOWN, T0)
+    assert r.action == "ignored"
+    assert event.flag == EventFlag.UNKNOWN_DIRECTION
+    total = (
+        await db.execute(select(func.count()).select_from(ParkingSession))
+    ).scalar_one()
+    assert total == 0
+
+
+# ── ТС-9: похожий номер (±1 символ) — possible_misread ─────────────────────
+
+
+async def test_entry_similar_plate_flagged_not_created(db):
+    """O↔0/1 символ разницы с активной сессией: не создаём, на проверку."""
+    await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    event, r = await _emit(db, "123ABC0Z", Direction.ENTRY, T0 + timedelta(minutes=5))
+    assert r.action == "possible_misread"
+    assert event.flag == EventFlag.POSSIBLE_MISREAD
+    total = (
+        await db.execute(select(func.count()).select_from(ParkingSession))
+    ).scalar_one()
+    assert total == 1  # вторая сессия НЕ создана
+
+
+async def test_exit_similar_plate_flagged_session_untouched(db):
+    """EXIT похожего номера не закрывает чужую сессию — на ручную проверку."""
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    event, r = await _emit(db, "123ABC0Z", Direction.EXIT, T0 + timedelta(minutes=30))
+    assert r.action == "possible_misread"
+    assert event.flag == EventFlag.POSSIBLE_MISREAD
+    sess = await db.get(ParkingSession, r1.session_id)
+    assert sess.status == SessionStatus.ACTIVE
+    assert sess.exit_time is None
+
+
+async def test_two_char_difference_creates_normally(db):
+    """Разница в 2+ символа — реально другая машина, сессия создаётся."""
+    await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    _, r = await _emit(db, "123ABD03", Direction.ENTRY, T0 + timedelta(minutes=5))
+    assert r.action == "created"
+
+
+# ── ТС-2: дубль выезда тоже помечается ──────────────────────────────────────
+
+
+async def test_duplicate_exit_flags_event(db):
+    await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=30))
+    event, r = await _emit(
+        db, "123ABC02", Direction.EXIT, T0 + timedelta(minutes=30, seconds=3)
+    )
+    assert r.action == "duplicate_exit"
+    assert event.flag == EventFlag.DUPLICATE

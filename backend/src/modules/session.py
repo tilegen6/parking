@@ -107,6 +107,29 @@ async def _recently_closed(
     return result.scalars().first()
 
 
+def _differs_by_one_char(a: str, b: str) -> bool:
+    """Ровно один отличающийся символ при равной длине (ТС-9: O↔0, I↔1 и т.п.)."""
+    return len(a) == len(b) and sum(1 for x, y in zip(a, b) if x != y) == 1
+
+
+async def _find_similar_active(
+    session: AsyncSession, plate: str
+) -> ParkingSession | None:
+    """Активная сессия с номером, отличающимся ровно на 1 символ (ТС-9).
+
+    Возможная ошибка распознавания одного символа: не действуем автоматически,
+    только помечаем possible_misread и отдаём на ручную проверку. Активных
+    сессий немного (масштаб парковки) — линейный проход по ним допустим.
+    """
+    result = await session.execute(
+        select(ParkingSession).where(ParkingSession.status == SessionStatus.ACTIVE)
+    )
+    for s in result.scalars():
+        if s.plate_number != plate and _differs_by_one_char(plate, s.plate_number):
+            return s
+    return None
+
+
 async def _autopay_enter(session: AsyncSession, parking: ParkingSession) -> None:
     """Best-effort уведомить Kaspi о въезде (регистрация + бесплатное время).
 
@@ -199,8 +222,29 @@ async def handle_recognition_event(
     if event.direction == Direction.EXIT:
         return await _handle_exit(session, event)
 
-    logger.info("direction=UNKNOWN для %s — сессии не трогаем", event.plate_number)
+    # ТС-7: направление не определено — сессии не трогаем, событие в ручную
+    # проверку; оператор назначит ENTRY/EXIT через админку.
+    event.flag = EventFlag.UNKNOWN_DIRECTION
+    logger.info("direction=UNKNOWN для %s — на ручную проверку", event.plate_number)
     return SessionResult("ignored", detail="direction=UNKNOWN")
+
+
+async def _open_session(
+    session: AsyncSession, event: RecognitionEvent
+) -> ParkingSession:
+    """Создать новую активную сессию по событию въезда."""
+    parking = ParkingSession(
+        plate_number=event.plate_number,
+        status=SessionStatus.ACTIVE,
+        entry_time=event.event_time,
+        last_seen=event.event_time,
+        entry_event_id=event.id,
+        entry_camera_id=event.camera_id,
+    )
+    session.add(parking)
+    await session.flush()
+    await _autopay_enter(session, parking)
+    return parking
 
 
 async def _handle_entry(
@@ -208,8 +252,33 @@ async def _handle_entry(
 ) -> SessionResult:
     active = await find_active_session(session, event.plate_number)  # type: ignore[arg-type]
     if active is not None:
-        # Дубль / повторный въезд (ТЗ §6.2): новую сессию не создаём.
-        #
+        window = timedelta(seconds=settings.entry_restart_window_seconds)
+        reentry = timedelta(seconds=settings.reentry_new_session_seconds)
+        ev_at = _as_aware(event.event_time)
+        last = _as_aware(active.last_seen) or _as_aware(active.entry_time)
+        entry = _as_aware(active.entry_time)
+
+        # ТС-3: новый въезд спустя большой промежуток = выезд был пропущен.
+        # Старую сессию закрываем как auto_closed (на ручную проверку),
+        # для машины открываем новую активную.
+        if ev_at is not None and last is not None and (ev_at - last) > reentry:
+            active.status = SessionStatus.AUTO_CLOSED
+            logger.warning(
+                "ENTRY при зависшей сессии #%s (%s): старая → auto_closed, "
+                "открываем новую (пропущенный выезд?)",
+                active.id,
+                event.plate_number,
+            )
+            parking = await _open_session(session, event)
+            return SessionResult(
+                "reentry_new_session",
+                parking.id,
+                detail=f"old={active.id} auto_closed",
+            )
+
+        # ТС-2: дубль на въезде — новую сессию не создаём, событие помечаем.
+        event.flag = EventFlag.DUPLICATE
+
         # Машина стоит перед шлагбаумом и камера видит её несколько раз подряд —
         # стартом сессии считаем ПОСЛЕДНЕЕ событие серии (решение клиента):
         # водитель не платит за ожидание снаружи. Помечаем entry_adjusted,
@@ -218,10 +287,6 @@ async def _handle_entry(
         # Сдвигаем только пока дубли идут «подряд» (entry_restart_window) и
         # только вперёд — повторное распознавание машины, давно стоящей на
         # территории, не должно обнулять счёт.
-        window = timedelta(seconds=settings.entry_restart_window_seconds)
-        ev_at = _as_aware(event.event_time)
-        last = _as_aware(active.last_seen) or _as_aware(active.entry_time)
-        entry = _as_aware(active.entry_time)
         if (
             ev_at is not None
             and last is not None
@@ -248,18 +313,25 @@ async def _handle_entry(
         )
         return SessionResult("updated_last_seen", active.id)
 
-    parking = ParkingSession(
-        plate_number=event.plate_number,
-        status=SessionStatus.ACTIVE,
-        entry_time=event.event_time,
-        last_seen=event.event_time,
-        entry_event_id=event.id,
-        entry_camera_id=event.camera_id,
-    )
-    session.add(parking)
-    await session.flush()
+    # ТС-9: точного совпадения нет, но есть активная сессия с номером,
+    # отличающимся на 1 символ — возможная ошибка распознавания (O↔0, I↔1).
+    # Автоматически ничего не делаем: событие на ручную проверку.
+    near = await _find_similar_active(session, event.plate_number)  # type: ignore[arg-type]
+    if near is not None:
+        event.flag = EventFlag.POSSIBLE_MISREAD
+        logger.warning(
+            "possible_misread: ENTRY %s похож на активную сессию #%s (%s) — "
+            "ручная проверка",
+            event.plate_number,
+            near.id,
+            near.plate_number,
+        )
+        return SessionResult(
+            "possible_misread", near.id, detail=f"похож на {near.plate_number}"
+        )
+
+    parking = await _open_session(session, event)
     logger.info("ENTRY: открыта сессия #%s для %s", parking.id, event.plate_number)
-    await _autopay_enter(session, parking)
     return SessionResult("created", parking.id)
 
 
@@ -271,8 +343,25 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
         recent = await _recently_closed(session, event.plate_number, event.event_time)  # type: ignore[arg-type]
         if recent is not None:
             recent.last_seen = event.event_time
+            event.flag = EventFlag.DUPLICATE  # ТС-2: дубль события
             logger.info("EXIT дубль: %s → игнор", event.plate_number)
             return SessionResult("duplicate_exit", recent.id)
+
+        # ТС-9: активной сессии с таким номером нет, но есть с номером ±1 символ —
+        # возможно, OCR ошибся в символе. Чужую сессию не закрываем, на проверку.
+        near = await _find_similar_active(session, event.plate_number)  # type: ignore[arg-type]
+        if near is not None:
+            event.flag = EventFlag.POSSIBLE_MISREAD
+            logger.warning(
+                "possible_misread: EXIT %s похож на активную сессию #%s (%s) — "
+                "ручная проверка",
+                event.plate_number,
+                near.id,
+                near.plate_number,
+            )
+            return SessionResult(
+                "possible_misread", near.id, detail=f"похож на {near.plate_number}"
+            )
 
         # Выезд без активной сессии (ТЗ §6.2)
         event.flag = EventFlag.EVENT_WITHOUT_SESSION
@@ -358,6 +447,9 @@ def _to_out(row: ParkingSession) -> ParkingSessionOut:
         entry = _as_aware(row.entry_time)
         now = datetime.now(timezone.utc)
         out.parked_seconds = int((now - entry).total_seconds())  # type: ignore[operator]
+        # ТС-8: активная дольше порога = «зависла» — выводим в админке,
+        # автоматически НЕ закрываем (только вручную)
+        out.is_stale = out.parked_seconds >= settings.session_stale_after_hours * 3600
     else:
         out.parked_seconds = row.duration_seconds
     return out
@@ -376,6 +468,9 @@ async def list_sessions(
     ),
     date_from: date | None = Query(None, description="Фильтр по дате въезда (с)"),
     date_to: date | None = Query(None, description="Фильтр по дате въезда (по)"),
+    stale: bool = Query(
+        False, description="ТС-8: только зависшие активные (старше порога)"
+    ),
     sort: str = Query("entry_time", description="Поле сортировки"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
 ) -> PaginatedSessions:
@@ -395,6 +490,13 @@ async def list_sessions(
             ParkingSession.entry_time
             <= datetime.combine(date_to, time.max, tzinfo=timezone.utc)
         )
+    if stale:
+        # ТС-8: активные дольше порога — «зависшие», на ручной разбор
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            hours=settings.session_stale_after_hours
+        )
+        conditions.append(ParkingSession.status == SessionStatus.ACTIVE)
+        conditions.append(ParkingSession.entry_time <= cutoff)
 
     base = select(ParkingSession)
     for cond in conditions:
@@ -474,4 +576,26 @@ async def get_parking_session(
     row = await session.get(ParkingSession, session_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
+    return _to_out(row)
+
+
+@router.post("/parking-sessions/{session_id}/cancel", response_model=ParkingSessionOut)
+async def cancel_session(
+    session_id: int,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ParkingSessionOut:
+    """Ручное закрытие сессии админом (ТС-8: зависшие закрываем только вручную)."""
+    row = await session.get(ParkingSession, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Сессия не найдена")
+    if row.status != SessionStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400, detail="Отменить можно только активную сессию"
+        )
+    row.status = SessionStatus.CANCELLED
+    await session.flush()
+    # updated_at генерируется БД (onupdate) — подтягиваем в async-контексте,
+    # иначе сериализация упрётся в лениво-экспайрнутый атрибут
+    await session.refresh(row)
+    logger.info("Сессия #%s (%s) отменена вручную", row.id, row.plate_number)
     return _to_out(row)

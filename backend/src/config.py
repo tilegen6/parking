@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # реже этого окна, старт сессии сдвигается на последнее из них. Вне окна —
     # повторное распознавание давно стоящей машины, счёт не обнуляем.
     entry_restart_window_seconds: int = 600
+    # ТС-3: новый ENTRY при активной сессии позже этого срока = пропущенный
+    # выезд. Старую сессию закрываем как auto_closed, открываем новую.
+    reentry_new_session_seconds: int = 3600
+    # ТС-8: активная сессия старше этого срока помечается «зависшей» (stale)
+    session_stale_after_hours: int = 24
 
     # --- CORS ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"

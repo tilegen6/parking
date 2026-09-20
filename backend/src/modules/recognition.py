@@ -13,7 +13,7 @@ from src import hikvision
 from src.database import get_session
 from src.models import Camera, RecognitionEvent
 from src.modules import session as session_service
-from src.schemas import PaginatedEvents, RecognitionEventOut
+from src.schemas import DirectionAssign, PaginatedEvents, RecognitionEventOut
 from src.storage import storage
 
 logger = logging.getLogger(__name__)
@@ -140,6 +140,12 @@ async def list_events(
     ),
     direction: str | None = Query(None, description="ENTRY / EXIT / UNKNOWN"),
     camera_id: int | None = Query(None),
+    flag: str | None = Query(
+        None,
+        description="Фильтр очереди ручной проверки: any (все с флагом) или "
+        "конкретный флаг (low_confidence / duplicate / event_without_session / "
+        "unknown_direction / possible_misread)",
+    ),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ) -> PaginatedEvents:
@@ -151,6 +157,11 @@ async def list_events(
         conditions.append(RecognitionEvent.direction == direction.upper())
     if camera_id is not None:
         conditions.append(RecognitionEvent.camera_id == camera_id)
+    if flag:
+        if flag == "any":
+            conditions.append(RecognitionEvent.flag.is_not(None))
+        else:
+            conditions.append(RecognitionEvent.flag == flag)
     if date_from:
         conditions.append(
             RecognitionEvent.event_time
@@ -198,3 +209,37 @@ async def get_event(
     if event is None:
         raise HTTPException(status_code=404, detail="Событие не найдено")
     return event
+
+
+@router.post("/recognition/events/{event_id}/direction")
+async def assign_event_direction(
+    event_id: int,
+    body: DirectionAssign,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict[str, object]:
+    """ТС-7: оператор вручную назначает ENTRY/EXIT событию с UNKNOWN.
+
+    После назначения событие проходит обычную обработку сессий (создание/
+    закрытие/шлагбаум) — как если бы направление пришло от камеры сразу.
+    """
+    from fastapi import HTTPException
+
+    from src.models import Direction
+
+    event = await session.get(RecognitionEvent, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Событие не найдено")
+    if event.direction != Direction.UNKNOWN:
+        raise HTTPException(
+            status_code=400, detail="Направление уже определено у этого события"
+        )
+
+    event.direction = body.direction.upper()
+    event.flag = None  # снимаем с ручной проверки; обработчик может переставить
+    result = await session_service.handle_recognition_event(session, event)
+    return {
+        "id": event.id,
+        "direction": event.direction,
+        "session_action": result.action,
+        "session_id": result.session_id,
+    }

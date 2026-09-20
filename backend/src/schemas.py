@@ -39,7 +39,16 @@ class RecognitionEventOut(BaseModel):
     camera_name: str | None
     vehicle_photo_url: str | None
     plate_photo_url: str | None
+    # Флаг аномалии (очередь ручной проверки): low_confidence / duplicate /
+    # event_without_session / unknown_direction / possible_misread
+    flag: str | None = None
     created_at: datetime
+
+
+class DirectionAssign(BaseModel):
+    """ТС-7: оператор вручную назначает направление событию UNKNOWN."""
+
+    direction: str = Field(..., pattern="^(ENTRY|EXIT|entry|exit)$")
 
 
 class PaginatedEvents(BaseModel):
@@ -69,6 +78,8 @@ class ParkingSessionOut(BaseModel):
     paid_amount: float = 0.0
     # Старт сессии сдвигался на последнее событие серии дублей у шлагбаума
     entry_adjusted: bool = False
+    # ТС-8: активная сессия старше порога — «зависла», нужен ручной разбор
+    is_stale: bool = False
     entry_event_id: int | None
     exit_event_id: int | None
     entry_camera_id: int | None

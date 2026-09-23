@@ -54,6 +54,28 @@ class EventFlag:
     POSSIBLE_MISREAD = "possible_misread"  # ТС-9: похож на активный номер (±1 символ)
 
 
+class Gate(Base):
+    """Шлагбаум/КПП с зоной. Списки доступа и учёт — на каждый шлагбаум свои.
+
+    level: 1 — внешний КПП (двор), 2 — внутренний (напр. парковка отеля).
+    Камеры и сессии привязываются к шлагбауму → раздельный учёт по зонам.
+    """
+
+    __tablename__ = "gate"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(255))
+    zone: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    level: Mapped[int] = mapped_column(default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Camera(Base):
     """Камера Hikvision, зарегистрированная в системе."""
 
@@ -65,6 +87,10 @@ class Camera(Base):
     type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default=CameraStatus.UNKNOWN)
+    # К какому шлагбауму относится камера (её события → сессии этого шлагбаума)
+    gate_id: Mapped[int | None] = mapped_column(
+        ForeignKey("gate.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -139,6 +165,11 @@ class ParkingSession(Base):
     # сессии сдвинут на ПОСЛЕДНЕЕ событие серии (решение клиента). Пометка
     # остаётся для разборов — полная история в recognition_event.
     entry_adjusted: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Шлагбаум/зона сессии (из камеры события). None = не привязан к шлагбауму.
+    gate_id: Mapped[int | None] = mapped_column(
+        ForeignKey("gate.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     # Связи с событиями распознавания (въезд/выезд)
     entry_event_id: Mapped[int | None] = mapped_column(

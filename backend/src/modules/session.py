@@ -29,6 +29,7 @@ from src.config import settings
 from src.database import get_session
 from src.integrations.kaspi_autopay import KaspiAutoPayClient
 from src.models import (
+    Camera,
     Direction,
     EventFlag,
     ParkingSession,
@@ -56,12 +57,47 @@ class SessionResult:
 async def find_active_session(
     session: AsyncSession, plate: str
 ) -> ParkingSession | None:
-    """Активная (открытая) сессия по номеру, если есть."""
+    """Активная сессия по номеру на любом шлагбауме (для kaspi-автосписания)."""
     result = await session.execute(
         select(ParkingSession)
         .where(
             ParkingSession.plate_number == plate,
             ParkingSession.status == SessionStatus.ACTIVE,
+        )
+        .order_by(ParkingSession.entry_time.desc())
+    )
+    return result.scalars().first()
+
+
+def _gate_cond(gate_id: int | None) -> ColumnElement[bool]:
+    """Условие «та же зона»: конкретный шлагбаум или сессии без шлагбаума."""
+    if gate_id is None:
+        return ParkingSession.gate_id.is_(None)
+    return ParkingSession.gate_id == gate_id
+
+
+async def _resolve_gate_id(
+    session: AsyncSession, event: RecognitionEvent
+) -> int | None:
+    """Шлагбаум события — из камеры (None, если камера не привязана/не найдена)."""
+    if event.camera_id is None:
+        return None
+    result = await session.execute(
+        select(Camera.gate_id).where(Camera.id == event.camera_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _find_active_at_gate(
+    session: AsyncSession, plate: str, gate_id: int | None
+) -> ParkingSession | None:
+    """Активная сессия по номеру в пределах одного шлагбаума/зоны."""
+    result = await session.execute(
+        select(ParkingSession)
+        .where(
+            ParkingSession.plate_number == plate,
+            ParkingSession.status == SessionStatus.ACTIVE,
+            _gate_cond(gate_id),
         )
         .order_by(ParkingSession.entry_time.desc())
     )
@@ -91,9 +127,9 @@ def _is_low_confidence(event: RecognitionEvent) -> bool:
 
 
 async def _recently_closed(
-    session: AsyncSession, plate: str, when: object
+    session: AsyncSession, plate: str, when: object, gate_id: int | None
 ) -> ParkingSession | None:
-    """Недавно закрытая сессия (для гашения повторного EXIT в окне дедупа)."""
+    """Недавно закрытая сессия на том же шлагбауме (гашение повторного EXIT)."""
     window = timedelta(seconds=settings.session_dedup_window_seconds)
     result = await session.execute(
         select(ParkingSession)
@@ -101,6 +137,7 @@ async def _recently_closed(
             ParkingSession.plate_number == plate,
             ParkingSession.exit_time.is_not(None),
             ParkingSession.exit_time >= when - window,  # type: ignore[operator]
+            _gate_cond(gate_id),
         )
         .order_by(ParkingSession.exit_time.desc())
     )
@@ -113,16 +150,19 @@ def _differs_by_one_char(a: str, b: str) -> bool:
 
 
 async def _find_similar_active(
-    session: AsyncSession, plate: str
+    session: AsyncSession, plate: str, gate_id: int | None
 ) -> ParkingSession | None:
-    """Активная сессия с номером, отличающимся ровно на 1 символ (ТС-9).
+    """Активная сессия на том же шлагбауме с номером ±1 символ (ТС-9).
 
     Возможная ошибка распознавания одного символа: не действуем автоматически,
     только помечаем possible_misread и отдаём на ручную проверку. Активных
     сессий немного (масштаб парковки) — линейный проход по ним допустим.
     """
     result = await session.execute(
-        select(ParkingSession).where(ParkingSession.status == SessionStatus.ACTIVE)
+        select(ParkingSession).where(
+            ParkingSession.status == SessionStatus.ACTIVE,
+            _gate_cond(gate_id),
+        )
     )
     for s in result.scalars():
         if s.plate_number != plate and _differs_by_one_char(plate, s.plate_number):
@@ -230,7 +270,9 @@ async def handle_recognition_event(
 
 
 async def _open_session(
-    session: AsyncSession, event: RecognitionEvent
+    session: AsyncSession,
+    event: RecognitionEvent,
+    gate_id: int | None = None,
 ) -> ParkingSession:
     """Создать новую активную сессию по событию въезда."""
     parking = ParkingSession(
@@ -240,6 +282,7 @@ async def _open_session(
         last_seen=event.event_time,
         entry_event_id=event.id,
         entry_camera_id=event.camera_id,
+        gate_id=gate_id,
     )
     session.add(parking)
     await session.flush()
@@ -250,7 +293,8 @@ async def _open_session(
 async def _handle_entry(
     session: AsyncSession, event: RecognitionEvent
 ) -> SessionResult:
-    active = await find_active_session(session, event.plate_number)  # type: ignore[arg-type]
+    gate_id = await _resolve_gate_id(session, event)
+    active = await _find_active_at_gate(session, event.plate_number, gate_id)  # type: ignore[arg-type]
     if active is not None:
         window = timedelta(seconds=settings.entry_restart_window_seconds)
         reentry = timedelta(seconds=settings.reentry_new_session_seconds)
@@ -269,7 +313,7 @@ async def _handle_entry(
                 active.id,
                 event.plate_number,
             )
-            parking = await _open_session(session, event)
+            parking = await _open_session(session, event, gate_id)
             return SessionResult(
                 "reentry_new_session",
                 parking.id,
@@ -316,7 +360,7 @@ async def _handle_entry(
     # ТС-9: точного совпадения нет, но есть активная сессия с номером,
     # отличающимся на 1 символ — возможная ошибка распознавания (O↔0, I↔1).
     # Автоматически ничего не делаем: событие на ручную проверку.
-    near = await _find_similar_active(session, event.plate_number)  # type: ignore[arg-type]
+    near = await _find_similar_active(session, event.plate_number, gate_id)  # type: ignore[arg-type]
     if near is not None:
         event.flag = EventFlag.POSSIBLE_MISREAD
         logger.warning(
@@ -330,17 +374,23 @@ async def _handle_entry(
             "possible_misread", near.id, detail=f"похож на {near.plate_number}"
         )
 
-    parking = await _open_session(session, event)
+    parking = await _open_session(session, event, gate_id)
     logger.info("ENTRY: открыта сессия #%s для %s", parking.id, event.plate_number)
     return SessionResult("created", parking.id)
 
 
 async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> SessionResult:
-    active = await find_active_session(session, event.plate_number)  # type: ignore[arg-type]
+    gate_id = await _resolve_gate_id(session, event)
+    active = await _find_active_at_gate(session, event.plate_number, gate_id)  # type: ignore[arg-type]
 
     if active is None:
         # Возможно, это повторный EXIT по уже закрытой сессии — гасим в окне дедупа
-        recent = await _recently_closed(session, event.plate_number, event.event_time)  # type: ignore[arg-type]
+        recent = await _recently_closed(
+            session,
+            event.plate_number,  # type: ignore[arg-type]
+            event.event_time,
+            gate_id,
+        )
         if recent is not None:
             recent.last_seen = event.event_time
             event.flag = EventFlag.DUPLICATE  # ТС-2: дубль события
@@ -349,7 +399,7 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
 
         # ТС-9: активной сессии с таким номером нет, но есть с номером ±1 символ —
         # возможно, OCR ошибся в символе. Чужую сессию не закрываем, на проверку.
-        near = await _find_similar_active(session, event.plate_number)  # type: ignore[arg-type]
+        near = await _find_similar_active(session, event.plate_number, gate_id)  # type: ignore[arg-type]
         if near is not None:
             event.flag = EventFlag.POSSIBLE_MISREAD
             logger.warning(
@@ -466,6 +516,7 @@ async def list_sessions(
     status: str | None = Query(
         None, description="active / unpaid / paid / cancelled / whitelist"
     ),
+    gate_id: int | None = Query(None, description="Фильтр по шлагбауму/зоне"),
     date_from: date | None = Query(None, description="Фильтр по дате въезда (с)"),
     date_to: date | None = Query(None, description="Фильтр по дате въезда (по)"),
     stale: bool = Query(
@@ -480,6 +531,8 @@ async def list_sessions(
         conditions.append(ParkingSession.plate_number.ilike(f"%{plate}%"))
     if status:
         conditions.append(ParkingSession.status == status.lower())
+    if gate_id is not None:
+        conditions.append(ParkingSession.gate_id == gate_id)
     if date_from:
         conditions.append(
             ParkingSession.entry_time

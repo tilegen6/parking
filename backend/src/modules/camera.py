@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import get_session
 from src.models import Camera, CameraStatus, RecognitionEvent
-from src.schemas import CameraCreate, CameraOut
+from src.schemas import CameraCreate, CameraOut, CameraUpdate
 
 router = APIRouter(prefix="/api/v1", tags=["cameras"])
 
@@ -44,6 +44,23 @@ async def get_camera(
     camera = await session.get(Camera, camera_id)
     if camera is None:
         raise HTTPException(status_code=404, detail="Камера не найдена")
+    return camera
+
+
+@router.put("/cameras/{camera_id}", response_model=CameraOut)
+async def update_camera(
+    camera_id: int,
+    payload: CameraUpdate,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Camera:
+    """Обновить камеру (в т.ч. привязать к шлагбауму — gate_id)."""
+    camera = await session.get(Camera, camera_id)
+    if camera is None:
+        raise HTTPException(status_code=404, detail="Камера не найдена")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(camera, field, value)
+    await session.flush()
+    await session.refresh(camera)
     return camera
 
 

@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from src.database import Base, get_session
+from src.modules import camera as camera_module
+from src.modules import gate as gate_module
 from src.modules import recognition as recognition_module
 from src.modules import session as session_module
 
@@ -52,6 +54,8 @@ async def client(sessionmaker_):
     app = FastAPI()
     app.include_router(session_module.router)
     app.include_router(recognition_module.router)
+    app.include_router(gate_module.router)
+    app.include_router(camera_module.router)
 
     async def _override_get_session():
         async with sessionmaker_() as s:

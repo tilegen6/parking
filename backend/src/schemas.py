@@ -5,6 +5,33 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# --- Gate (шлагбаум/зона) ---
+class GateCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    zone: str | None = Field(None, max_length=255)
+    level: int = Field(1, ge=1)
+    is_active: bool = True
+
+
+class GateUpdate(BaseModel):
+    name: str | None = Field(None, max_length=255)
+    zone: str | None = Field(None, max_length=255)
+    level: int | None = Field(None, ge=1)
+    is_active: bool | None = None
+
+
+class GateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    zone: str | None
+    level: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 # --- Camera ---
 class CameraCreate(BaseModel):
     name: str = Field(..., max_length=255)
@@ -12,6 +39,18 @@ class CameraCreate(BaseModel):
     type: str | None = Field(None, max_length=64)
     location: str | None = Field(None, max_length=255)
     status: str = "unknown"
+    gate_id: int | None = None
+
+
+class CameraUpdate(BaseModel):
+    """Частичное обновление камеры (в т.ч. привязка к шлагбауму)."""
+
+    name: str | None = Field(None, max_length=255)
+    ip_address: str | None = Field(None, max_length=64)
+    type: str | None = Field(None, max_length=64)
+    location: str | None = Field(None, max_length=255)
+    status: str | None = None
+    gate_id: int | None = None
 
 
 class CameraOut(BaseModel):
@@ -23,6 +62,7 @@ class CameraOut(BaseModel):
     type: str | None
     location: str | None
     status: str
+    gate_id: int | None = None
     created_at: datetime
 
 
@@ -80,6 +120,8 @@ class ParkingSessionOut(BaseModel):
     entry_adjusted: bool = False
     # ТС-8: активная сессия старше порога — «зависла», нужен ручной разбор
     is_stale: bool = False
+    # Шлагбаум/зона сессии (None = не привязана)
+    gate_id: int | None = None
     entry_event_id: int | None
     exit_event_id: int | None
     entry_camera_id: int | None

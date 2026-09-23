@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 
 from src.models import (
+    Camera,
     Direction,
     EventFlag,
+    Gate,
     ParkingSession,
     RecognitionEvent,
     SessionStatus,
@@ -253,3 +255,65 @@ async def test_duplicate_exit_flags_event(db):
     )
     assert r.action == "duplicate_exit"
     assert event.flag == EventFlag.DUPLICATE
+
+
+# ── Итерация 1: раздельный учёт по шлагбаумам ───────────────────────────────
+
+
+async def _gate_cam(db, gate_name, zone, level, cam_name):
+    gate = Gate(name=gate_name, zone=zone, level=level)
+    db.add(gate)
+    await db.flush()
+    cam = Camera(name=cam_name, gate_id=gate.id)
+    db.add(cam)
+    await db.flush()
+    return gate, cam
+
+
+async def test_same_plate_two_gates_two_sessions(db):
+    """Один номер на двух шлагбаумах = две независимые сессии (двор + отель)."""
+    g1, c1 = await _gate_cam(db, "КПП двор", "Двор", 1, "cam-yard")
+    g2, c2 = await _gate_cam(db, "Отель", "Отель", 2, "cam-hotel")
+
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0, cam=c1.id)
+    _, r2 = await _emit(
+        db, "123ABC02", Direction.ENTRY, T0 + timedelta(minutes=1), cam=c2.id
+    )
+    assert r1.action == "created"
+    assert r2.action == "created"  # другой шлагбаум -> отдельная сессия
+    assert r1.session_id != r2.session_id
+
+    s1 = await db.get(ParkingSession, r1.session_id)
+    s2 = await db.get(ParkingSession, r2.session_id)
+    assert s1.gate_id == g1.id
+    assert s2.gate_id == g2.id
+
+    active = (
+        await db.execute(
+            select(func.count())
+            .select_from(ParkingSession)
+            .where(ParkingSession.status == SessionStatus.ACTIVE)
+        )
+    ).scalar_one()
+    assert active == 2
+
+    # выезд на дворовом шлагбауме закрывает только дворовую сессию
+    _, rx = await _emit(
+        db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=1), cam=c1.id
+    )
+    assert rx.action == "closed"
+    assert rx.session_id == r1.session_id
+    hotel = await db.get(ParkingSession, r2.session_id)
+    assert hotel.status == SessionStatus.ACTIVE  # отель ещё занят
+
+
+async def test_reentry_same_gate_is_duplicate(db):
+    """Повторный въезд на ТОТ ЖЕ шлагбаум = дубль, новую не создаёт."""
+    _, c1 = await _gate_cam(db, "КПП", "Двор", 1, "cam1")
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0, cam=c1.id)
+    _, r2 = await _emit(
+        db, "123ABC02", Direction.ENTRY, T0 + timedelta(seconds=5), cam=c1.id
+    )
+    assert r1.action == "created"
+    assert r2.action == "entry_restarted"
+    assert r2.session_id == r1.session_id

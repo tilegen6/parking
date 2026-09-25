@@ -64,19 +64,39 @@ def _det(plate: str, i: int) -> FrameResult:
     )
 
 
+class _Clock:
+    """Тикающие часы: трек стареет по времени, застывшие часы его не закроют."""
+
+    def __init__(self, step: float = 0.2) -> None:
+        self.now = 0.0
+        self.step = step
+
+    def __call__(self) -> float:
+        return self.now
+
+    def tick(self) -> None:
+        self.now += self.step
+
+
 def _make():
     pipe = _FakePipeline()
     # Пороги «боевые»: dark_threshold=40 отсеет чёрный кадр, blur — однотонный.
     cfg = RecognizerConfig(
-        min_hits=3, cooldown_seconds=60, blur_threshold=100.0, dark_threshold=40.0
+        min_hits=3,
+        cooldown_seconds=60,
+        blur_threshold=100.0,
+        dark_threshold=40.0,
+        track_max_age_seconds=0.5,
     )
-    sp = StreamPipeline(pipe, cfg, sinks={}, clock=lambda: 0.0)
-    return sp, pipe
+    clk = _Clock()
+    sp = StreamPipeline(pipe, cfg, sinks={}, clock=clk)
+    return sp, pipe, clk
 
 
 def test_dark_frame_skips_ocr_and_counts_dropped():
     """Тёмный кадр не доходит до распознавания, но виден в статистике."""
-    sp, pipe = _make()
+    sp, pipe, clk = _make()
+    clk.tick()
     sp.process(_frame(_dark_image()))
     assert pipe.process_calls == 0  # OCR не звали
     assert sp.frames_dropped == 1
@@ -84,8 +104,9 @@ def test_dark_frame_skips_ocr_and_counts_dropped():
 
 
 def test_good_frame_goes_to_ocr():
-    sp, pipe = _make()
+    sp, pipe, clk = _make()
     pipe.next = _det("127AST02", 0)
+    clk.tick()
     sp.process(_frame(_good_image()))
     assert pipe.process_calls == 1
     assert sp.frames_dropped == 0
@@ -97,15 +118,17 @@ def test_event_not_lost_when_car_leaves_on_bad_frames():
     Это главный риск фикса: если плохой кадр просто пропускать, трек не состарится
     и проезд потеряется. Плохой кадр = кадр без детекций → трек стареет как обычно.
     """
-    sp, pipe = _make()
+    sp, pipe, clk = _make()
     # машина проезжает на нормальных кадрах
     for i in range(6):
         pipe.next = _det("127AST02", i)
+        clk.tick()
         assert sp.process(_frame(_good_image(), i)) == []
     # затем свет пропал/смазало — идут плохие кадры, машина уже уехала
     pipe.next = None
     emitted: list[dict] = []
     for i in range(GAP_LEN):
+        clk.tick()
         emitted += sp.process(_frame(_dark_image(), 100 + i))
 
     assert len(emitted) == 1  # событие не потерялось
@@ -115,22 +138,26 @@ def test_event_not_lost_when_car_leaves_on_bad_frames():
 
 def test_bad_frames_do_not_break_ongoing_track():
     """Кратковременная засветка/смаз в середине проезда не рвёт трек на два события."""
-    sp, pipe = _make()
+    sp, pipe, clk = _make()
     for i in range(4):
         pipe.next = _det("127AST02", i)
+        clk.tick()
         sp.process(_frame(_good_image(), i))
     # два плохих кадра подряд (в пределах max_age)
     pipe.next = None
     for i in range(2):
+        clk.tick()
         sp.process(_frame(_dark_image(), 50 + i))
     # машина снова видна
     for i in range(4, 8):
         pipe.next = _det("127AST02", i)
+        clk.tick()
         sp.process(_frame(_good_image(), i))
 
     pipe.next = None
     emitted: list[dict] = []
     for i in range(GAP_LEN):
+        clk.tick()
         emitted += sp.process(_frame(_dark_image(), 200 + i))
 
     assert len(emitted) == 1  # один проезд — одно событие

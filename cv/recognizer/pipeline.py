@@ -111,11 +111,28 @@ class Pipeline:
         )
 
     def process_frame(self, image) -> FrameResult | None:
+        """Лучшее чтение по всему кадру (одно). Для батч-обработки и /recognize."""
         candidates = []
         for region in self.detector.detect(image):
             for r in self.ocr.read(region.image):
                 candidates.append((r, region.box))
         return self._best(candidates)
+
+    def process_frame_multi(self, image) -> list[FrameResult]:
+        """По одному лучшему чтению на КАЖДЫЙ регион детектора.
+
+        Для живого потока у шлагбаума нельзя схлопывать кадр до одного кандидата:
+        стоящая у стрелы машина и подъезжающая за ней попадали бы в один трек, и
+        их чтения смешивались бы в общем голосовании — отсюда «открыли не тому».
+        Каждый номер кадра должен вести свой трек, поэтому отдаём список.
+        """
+        out: list[FrameResult] = []
+        for region in self.detector.detect(image):
+            readings = [(r, region.box) for r in self.ocr.read(region.image)]
+            best = self._best(readings)
+            if best is not None:
+                out.append(best)
+        return out
 
     def run_images(self, source, sinks: dict) -> list[dict]:
         events = []

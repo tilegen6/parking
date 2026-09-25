@@ -17,6 +17,54 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.database import Base
 
 
+class UserRole:
+    """Роли пользователей админки (списки ведут пользователи с правами, ТС-2/3/4)."""
+
+    ADMIN = "admin"  # всё + управление пользователями
+    OPERATOR = "operator"  # диспетчер: ручные действия по сессиям/событиям
+    LIST_MANAGER = "list_manager"  # ведение списков доступа (зел/жёлт/крас)
+
+    ALL = (ADMIN, OPERATOR, LIST_MANAGER)
+
+
+class User(Base):
+    """Пользователь админки. Аудит действий опирается на его личность."""
+
+    __tablename__ = "app_user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(32), default=UserRole.OPERATOR)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AuditLog(Base):
+    """Журнал действий пользователей — кто/что/когда (привязка к личности)."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("app_user.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)  # напр. user.create
+    entity: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    entity_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
 class Direction:
     """Направление движения автомобиля относительно камеры."""
 

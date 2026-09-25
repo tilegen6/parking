@@ -10,8 +10,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from src.config import settings
-from src.database import engine
+from src.database import async_session_factory, engine
 from src.modules import (
+    auth,
     camera,
     gate,
     kaspi,
@@ -19,6 +20,7 @@ from src.modules import (
     recognition,
     session,
     tariff,
+    user,
 )
 from src.storage import storage
 
@@ -37,6 +39,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         storage.ensure_bucket()
     except Exception as exc:  # noqa: BLE001
         logger.warning("MinIO недоступен при старте: %s", exc)
+    # Стартовый администратор при пустой БД (не падаем, если БД недоступна)
+    try:
+        async with async_session_factory() as s:
+            await auth.ensure_default_admin(s)
+            await s.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Не удалось создать стартового админа: %s", exc)
     yield
     await engine.dispose()
     logger.info("Остановка приложения")
@@ -80,6 +89,8 @@ async def health() -> dict[str, object]:
     return {"status": "ok" if db_ok else "degraded", "database": db_ok}
 
 
+app.include_router(auth.router)
+app.include_router(user.router)
 app.include_router(recognition.router)
 app.include_router(camera.router)
 app.include_router(camera.dashboard_router)

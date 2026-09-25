@@ -5,6 +5,59 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# --- Auth / Users ---
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    full_name: str | None
+    role: str
+    is_active: bool
+    created_at: datetime
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=4, max_length=128)
+    full_name: str | None = Field(None, max_length=255)
+    role: str = "operator"
+    is_active: bool = True
+
+
+class UserUpdate(BaseModel):
+    """Частичное обновление; password задаётся только при смене."""
+
+    password: str | None = Field(None, min_length=4, max_length=128)
+    full_name: str | None = Field(None, max_length=255)
+    role: str | None = None
+    is_active: bool | None = None
+
+
+class AuditLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int | None
+    username: str | None
+    action: str
+    entity: str | None
+    entity_id: str | None
+    detail: str | None
+    created_at: datetime
+
+
 # --- Gate (шлагбаум/зона) ---
 class GateCreate(BaseModel):
     name: str = Field(..., max_length=255)

@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     # ТС-8: активная сессия старше этого срока помечается «зависшей» (stale)
     session_stale_after_hours: int = 24
 
+    # --- Auth / JWT ---
+    # Секрет подписи JWT. В проде — задать через env; дефолт только для dev/CI.
+    jwt_secret_key: str = "dev-insecure-change-me"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 720  # 12 часов
+    # Стартовый администратор — создаётся при пустой таблице пользователей.
+    default_admin_username: str = "admin"
+    default_admin_password: str = "admin"
+
     # --- CORS ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
 

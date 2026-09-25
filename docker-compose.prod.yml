@@ -44,6 +44,14 @@ services:
     image: ghcr.io/codeanpr/smart-parking-frontend:${IMAGE_TAG:-latest}
     build: !reset null
     ports: !override []
+    # healthcheck из образа стучится на localhost → он резолвится в IPv6 (::1),
+    # а nginx слушает только IPv4 → проверка падает. Переопределяем на 127.0.0.1.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ── Edge reverse-proxy + TLS (единственный публичный сервис) ──────
   nginx:

@@ -17,18 +17,11 @@ export interface AnprInput {
   direction: Direction;
   confidence: number;
   deviceName?: string;
-  /**
-   * Время события. По умолчанию — сейчас. Для теста можно задать въезд «задним
-   * числом» (backend берёт entry_time из dateTime) — так на парковке появляется
-   * машина, у которой уже «набежал» долг.
-   */
-  at?: Date;
 }
 
 export function sendAnprEvent(input: AnprInput): Promise<AnprResult> {
-  const { at, ...rest } = input;
   return api.post<AnprResult>("/api/v1/hikvision/anpr-event", {
-    ...rest,
-    dateTime: (at ?? new Date()).toISOString(),
+    ...input,
+    dateTime: new Date().toISOString(),
   });
 }

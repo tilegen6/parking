@@ -1,26 +1,14 @@
-import {
-  useBillingStats,
-  useCameras,
-  useDashboardStats,
-  useEvents,
-} from "../api/hooks";
+import { useCameras, useDashboardStats, useEvents } from "../api/hooks";
 import { CameraHealth } from "../components/CameraHealth";
 import { EventFeed } from "../components/EventFeed";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
-import {
-  directionLabel,
-  formatDateTime,
-  formatDuration,
-  timeAgo,
-} from "../lib/format";
-import { formatMoney } from "../lib/tariff";
+import { directionLabel, formatDateTime, timeAgo } from "../lib/format";
 
 export function DashboardPage() {
   const { data, isLoading, isError } = useDashboardStats();
   const events = useEvents({ page: 1, limit: 7 });
   const cameras = useCameras();
-  const billing = useBillingStats();
   const last = data?.last_event ?? null;
 
   return (
@@ -90,34 +78,6 @@ export function DashboardPage() {
           eyebrow="Последнее событие"
           value={last ? directionLabel[last.direction] : "—"}
           hint={last ? timeAgo(last.event_time) : "нет данных"}
-        />
-      </div>
-
-      {/* Деньги (итерация 7) */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatTile
-          eyebrow="Доход сегодня"
-          value={
-            billing.isLoading
-              ? "…"
-              : formatMoney(billing.data?.revenue_today ?? 0)
-          }
-          hint="сумма оплаченных"
-        />
-        <StatTile
-          eyebrow="Неоплаченные"
-          value={billing.data?.unpaid_count ?? 0}
-          unit="сессий"
-          hint="выехали без оплаты"
-        />
-        <StatTile
-          eyebrow="Среднее время"
-          value={
-            billing.isLoading
-              ? "…"
-              : formatDuration(billing.data?.avg_parked_seconds ?? null)
-          }
-          hint="средняя стоянка"
         />
       </div>
 

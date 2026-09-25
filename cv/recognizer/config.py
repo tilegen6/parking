@@ -18,10 +18,6 @@ class RecognizerConfig:
     video_fps: float = 5.0  # сколько кадров/сек выбирать из видео (ТЗ 2.1: 3-10)
     vote_window_seconds: float = 3.0  # окно majority-vote по треку
 
-    # живой поток (StreamPipeline)
-    min_hits: int = 3  # минимум кадров в треке, чтобы эмитить событие
-    cooldown_seconds: float = 60.0  # анти-повтор: не слать тот же номер чаще
-
     # фильтр качества (ТЗ 2.1)
     blur_threshold: float = 100.0  # var of Laplacian ниже -> смазано
     dark_threshold: float = 40.0  # средняя яркость ниже -> темно

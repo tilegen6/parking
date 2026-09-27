@@ -115,6 +115,8 @@ class OpenImagePlateDetector(PlateDetector):
         self,
         detection_model: str = "yolo-v9-t-640-license-plate-end2end",
         conf: float = 0.25,
+        pad_x: float = 0.06,
+        pad_y: float = 0.14,
     ) -> None:
         from .util import ensure_ssl_certs
 
@@ -126,6 +128,11 @@ class OpenImagePlateDetector(PlateDetector):
                 "open-image-models не установлен. "
                 '`pip install "open-image-models[onnx]"`'
             ) from e
+        # Детектор даёт tight-бокс впритык к номеру — крайние символы срезаются по
+        # краю кропа, и OCR теряет первый/последний знак. Немного расширяем (у
+        # YoloPlateDetector такой запас уже был, здесь его не было).
+        self.pad_x = pad_x
+        self.pad_y = pad_y
         self._det = LicensePlateDetector(
             detection_model=detection_model,  # type: ignore[arg-type]
             conf_thresh=conf,
@@ -136,8 +143,13 @@ class OpenImagePlateDetector(PlateDetector):
         regions: list[Region] = []
         for d in self._det.predict(frame):
             bb = d.bounding_box
-            x1, y1 = max(0, int(bb.x1)), max(0, int(bb.y1))
-            x2, y2 = min(w, int(bb.x2)), min(h, int(bb.y2))
+            bw = max(0.0, float(bb.x2) - float(bb.x1))
+            bh = max(0.0, float(bb.y2) - float(bb.y1))
+            dx, dy = bw * self.pad_x, bh * self.pad_y
+            x1 = max(0, int(bb.x1 - dx))
+            y1 = max(0, int(bb.y1 - dy))
+            x2 = min(w, int(bb.x2 + dx))
+            y2 = min(h, int(bb.y2 + dy))
             crop = frame[y1:y2, x1:x2]
             if crop.size:
                 regions.append(Region(crop, (x1, y1, x2, y2)))

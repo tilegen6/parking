@@ -21,14 +21,35 @@ except ImportError:  # pragma: no cover
 @dataclass
 class OcrResult:
     text: str
-    confidence: float
+    confidence: float  # средняя уверенность по РЕАЛЬНЫМ символам (не по pad-слотам)
     box: tuple[int, int, int, int] | None = None  # x1, y1, x2, y2
+    # Уверенность самого слабого символа. Средняя маскирует одиночную ошибку:
+    # один символ на 0.35 среди восьми по 0.98 даёт среднее ≈0.91 — по нему
+    # чтение выглядит хорошим. Минимум показывает такие случаи честно и нужен
+    # для калибровки порога на данных объекта.
+    confidence_min: float | None = None
 
 
 class PlateOcr(ABC):
     @abstractmethod
     def read(self, image: np.ndarray) -> list[OcrResult]:
         """Прочитать текст(ы) с изображения региона/кадра."""
+
+
+def _char_confidence(probs, text: str) -> tuple[float, float | None]:  # noqa: ANN001
+    """(средняя, минимальная) уверенность по символам номера.
+
+    Модель отдаёт вероятности на ВСЕ слоты (у fast-plate-ocr их max_plate_slots=9),
+    а распознанная строка короче — хвост занят pad-символами, в которых модель почти
+    всегда уверена. Усреднение по всем слотам поэтому завышает оценку и делает порог
+    малоинформативным. Считаем только по реальным символам.
+    """
+    if probs is None or len(probs) == 0:
+        return 0.0, None
+    used = probs[: len(text)] if text else probs
+    if len(used) == 0:
+        return 0.0, None
+    return float(np.mean(used)), float(np.min(used))
 
 
 # --------------------------- TemplateOcr (синтетика) ---------------------------
@@ -183,6 +204,6 @@ class FastPlateOcr(PlateOcr):
         # return_confidence=True -> в PlatePrediction появляется char_probs
         for p in self._ocr.run(gray, return_confidence=True):
             probs = getattr(p, "char_probs", None)
-            conf = float(np.mean(probs)) if probs is not None and len(probs) else 0.0
-            results.append(OcrResult(p.plate, conf))
+            mean, low = _char_confidence(probs, p.plate)
+            results.append(OcrResult(p.plate, mean, confidence_min=low))
         return results

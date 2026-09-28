@@ -29,6 +29,10 @@ from src.config import settings
 from src.database import get_session
 from src.integrations.kaspi_autopay import KaspiAutoPayClient
 from src.models import (
+    AccessEntry,
+    AccessListType,
+    AccessType,
+    AlertKind,
     Camera,
     Direction,
     EventFlag,
@@ -38,6 +42,7 @@ from src.models import (
     RecognitionEvent,
     SessionStatus,
 )
+from src.modules.access import record_alert, resolve_access
 from src.modules.tariff import get_active_tariff, tariff_price
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
@@ -273,8 +278,21 @@ async def _open_session(
     session: AsyncSession,
     event: RecognitionEvent,
     gate_id: int | None = None,
+    access: AccessEntry | None = None,
 ) -> ParkingSession:
-    """Создать новую активную сессию по событию въезда."""
+    """Создать новую активную сессию по событию въезда.
+
+    `access` — эффективная запись списка (зелёный/жёлтый) → метка сессии для
+    расчёта оплаты при выезде.
+    """
+    access_type = None
+    free_until = None
+    if access is not None:
+        if access.list_type == AccessListType.GREEN:
+            access_type = AccessType.GREEN
+        elif access.list_type == AccessListType.YELLOW:
+            access_type = AccessType.YELLOW
+            free_until = access.valid_until
     parking = ParkingSession(
         plate_number=event.plate_number,
         status=SessionStatus.ACTIVE,
@@ -283,6 +301,8 @@ async def _open_session(
         entry_event_id=event.id,
         entry_camera_id=event.camera_id,
         gate_id=gate_id,
+        access_type=access_type,
+        free_until=free_until,
     )
     session.add(parking)
     await session.flush()
@@ -294,6 +314,27 @@ async def _handle_entry(
     session: AsyncSession, event: RecognitionEvent
 ) -> SessionResult:
     gate_id = await _resolve_gate_id(session, event)
+
+    # Списки доступа (итерация 3): красный — не пускаем + сигнал; зелёный/жёлтый —
+    # метим сессию для бесплатного/льготного проезда.
+    access = await resolve_access(session, event.plate_number, gate_id)
+    if access is not None and access.list_type == AccessListType.RED:
+        event.flag = EventFlag.ACCESS_DENIED_RED
+        await record_alert(
+            session,
+            AlertKind.RED_LIST,
+            plate=event.plate_number,
+            gate_id=gate_id,
+            message=f"Красный список: {event.plate_number} на шлагбауме {gate_id}",
+        )
+        logger.warning(
+            "ACCESS DENIED (красный список): %s на шлагбауме %s — шлагбаум закрыт, "
+            "сигнал ответственному",
+            event.plate_number,
+            gate_id,
+        )
+        return SessionResult("access_denied_red", detail="красный список")
+
     active = await _find_active_at_gate(session, event.plate_number, gate_id)  # type: ignore[arg-type]
     if active is not None:
         window = timedelta(seconds=settings.entry_restart_window_seconds)
@@ -313,7 +354,7 @@ async def _handle_entry(
                 active.id,
                 event.plate_number,
             )
-            parking = await _open_session(session, event, gate_id)
+            parking = await _open_session(session, event, gate_id, access)
             return SessionResult(
                 "reentry_new_session",
                 parking.id,
@@ -374,7 +415,7 @@ async def _handle_entry(
             "possible_misread", near.id, detail=f"похож на {near.plate_number}"
         )
 
-    parking = await _open_session(session, event, gate_id)
+    parking = await _open_session(session, event, gate_id, access)
     logger.info("ENTRY: открыта сессия #%s для %s", parking.id, event.plate_number)
     return SessionResult("created", parking.id)
 
@@ -429,9 +470,24 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
         duration = int((exit_at - entry).total_seconds())
         active.duration_seconds = duration
     tariff = await get_active_tariff(session)
-    price = tariff_price(duration, tariff) if duration is not None else 0.0
-    if tariff is not None and duration is not None:
-        active.price = price
+
+    # Списки доступа (итерация 3): зелёный — бесплатно; жёлтый — бесплатно до
+    # free_until, далее тариф на «перебор»; остальные — как обычно.
+    if active.access_type == AccessType.GREEN:
+        price = 0.0
+        active.price = 0.0
+    elif active.access_type == AccessType.YELLOW:
+        free_until = _as_aware(active.free_until)
+        billable = 0
+        if exit_at is not None and free_until is not None and exit_at > free_until:
+            billable = int((exit_at - free_until).total_seconds())
+        price = tariff_price(billable, tariff) if tariff is not None else 0.0
+        if tariff is not None:
+            active.price = price
+    else:
+        price = tariff_price(duration, tariff) if duration is not None else 0.0
+        if tariff is not None and duration is not None:
+            active.price = price
     due = round(price - active.paid_amount, 2)
 
     # Автосписание Kaspi: пробуем списать долг с привязанной карты ДО отказа.

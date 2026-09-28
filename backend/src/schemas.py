@@ -58,6 +58,51 @@ class AuditLogOut(BaseModel):
     created_at: datetime
 
 
+# --- Access lists (зелёный/жёлтый/красный) ---
+class AccessEntryCreate(BaseModel):
+    plate: str = Field(..., min_length=1, max_length=32)
+    list_type: str  # green | yellow | red
+    gate_id: int | None = None  # None = на все шлагбаумы
+    valid_until: datetime | None = None  # жёлтый: бесплатно до этого момента
+    note: str | None = Field(None, max_length=255)
+    is_active: bool = True
+
+
+class AccessEntryUpdate(BaseModel):
+    list_type: str | None = None
+    gate_id: int | None = None
+    valid_until: datetime | None = None
+    note: str | None = Field(None, max_length=255)
+    is_active: bool | None = None
+
+
+class AccessEntryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    plate: str
+    list_type: str
+    gate_id: int | None
+    valid_until: datetime | None
+    note: str | None
+    is_active: bool
+    created_by_username: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AlertOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    kind: str
+    plate: str | None
+    gate_id: int | None
+    message: str | None
+    acknowledged: bool
+    created_at: datetime
+
+
 # --- Gate (шлагбаум/зона) ---
 class GateCreate(BaseModel):
     name: str = Field(..., max_length=255)
@@ -175,6 +220,9 @@ class ParkingSessionOut(BaseModel):
     is_stale: bool = False
     # Шлагбаум/зона сессии (None = не привязана)
     gate_id: int | None = None
+    # Способ проезда по спискам: green/yellow/None (обычная платная)
+    access_type: str | None = None
+    free_until: datetime | None = None
     entry_event_id: int | None
     exit_event_id: int | None
     entry_camera_id: int | None

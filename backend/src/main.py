@@ -12,6 +12,7 @@ from sqlalchemy import text
 from src.config import settings
 from src.database import async_session_factory, engine
 from src.modules import (
+    access,
     auth,
     camera,
     gate,
@@ -95,6 +96,7 @@ app.include_router(recognition.router)
 app.include_router(camera.router)
 app.include_router(camera.dashboard_router)
 app.include_router(gate.router)
+app.include_router(access.router)
 app.include_router(session.router)
 app.include_router(tariff.router)
 app.include_router(payment.router)

@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { useEvents } from "../api/hooks";
+import { useAssignDirection, useEvents } from "../api/hooks";
 import { PhotoModal } from "../components/PhotoModal";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import { Thumb } from "../components/Thumb";
-import type { Direction, EventsFilters } from "../api/types";
+import type { Direction, EventFlag, EventsFilters } from "../api/types";
 import {
   directionBadgeClass,
   directionLabel,
+  eventFlagBadgeClass,
+  eventFlagLabel,
   formatConfidence,
   formatDateTime,
 } from "../lib/format";
@@ -17,16 +19,19 @@ const PAGE_LIMIT = 20;
 export function EventsPage() {
   const [plate, setPlate] = useState("");
   const [direction, setDirection] = useState<Direction | "">("");
+  const [flag, setFlag] = useState<EventFlag | "any" | "">("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [photo, setPhoto] = useState<string | null>(null);
+  const assign = useAssignDirection();
 
   const filters: EventsFilters = {
     page,
     limit: PAGE_LIMIT,
     plate: plate || undefined,
     direction: direction || undefined,
+    flag: flag || undefined,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   };
@@ -35,7 +40,7 @@ export function EventsPage() {
 
   const resetToFirstPage = () => setPage(1);
 
-  const hasFilters = Boolean(plate || direction || dateFrom || dateTo);
+  const hasFilters = Boolean(plate || direction || flag || dateFrom || dateTo);
   const shown = data?.items.length ?? 0;
 
   return (
@@ -104,6 +109,24 @@ export function EventsPage() {
             <option value="UNKNOWN">Неизвестно</option>
           </select>
         </Field>
+        <Field label="Проверка">
+          <select
+            value={flag}
+            onChange={(e) => {
+              setFlag(e.target.value as EventFlag | "any" | "");
+              resetToFirstPage();
+            }}
+            className="input"
+          >
+            <option value="">Все события</option>
+            <option value="any">⚠ Только с флагом</option>
+            <option value="unknown_direction">направление?</option>
+            <option value="possible_misread">похож на активный ±1</option>
+            <option value="low_confidence">низкая уверенность</option>
+            <option value="event_without_session">выезд без сессии</option>
+            <option value="duplicate">дубли</option>
+          </select>
+        </Field>
         <Field label="С даты">
           <input
             type="date"
@@ -131,6 +154,7 @@ export function EventsPage() {
             onClick={() => {
               setPlate("");
               setDirection("");
+              setFlag("");
               setDateFrom("");
               setDateTo("");
               resetToFirstPage();
@@ -152,6 +176,7 @@ export function EventsPage() {
               <th className="px-4 py-3">Камера</th>
               <th className="px-4 py-3">Время</th>
               <th className="px-4 py-3">Точность</th>
+              <th className="px-4 py-3">Проверка</th>
               <th className="px-4 py-3">Авто</th>
               <th className="px-4 py-3">Номер (фото)</th>
             </tr>
@@ -159,7 +184,7 @@ export function EventsPage() {
           <tbody className="divide-y divide-line">
             {isLoading && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
                   Загрузка…
                 </td>
               </tr>
@@ -167,7 +192,7 @@ export function EventsPage() {
 
             {isError && !isLoading && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-rose-500">
+                <td colSpan={8} className="px-4 py-12 text-center text-rose-500">
                   Ошибка загрузки. Проверьте backend.
                 </td>
               </tr>
@@ -175,7 +200,7 @@ export function EventsPage() {
 
             {!isLoading && !isError && data?.items.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
                   Событий пока нет
                 </td>
               </tr>
@@ -201,6 +226,41 @@ export function EventsPage() {
                 </td>
                 <td className="px-4 py-3 font-mono text-ink-500/70">
                   {formatConfidence(ev.confidence)}
+                </td>
+                <td className="px-4 py-3">
+                  {ev.flag === "unknown_direction" ? (
+                    // ТС-7: оператор вручную назначает направление
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        disabled={assign.isPending}
+                        onClick={() =>
+                          assign.mutate({ eventId: ev.id, direction: "ENTRY" })
+                        }
+                        className="rounded bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Въезд
+                      </button>
+                      <button
+                        disabled={assign.isPending}
+                        onClick={() =>
+                          assign.mutate({ eventId: ev.id, direction: "EXIT" })
+                        }
+                        className="rounded bg-sky px-2 py-0.5 text-xs font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+                      >
+                        Выезд
+                      </button>
+                    </div>
+                  ) : ev.flag ? (
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-medium ${
+                        eventFlagBadgeClass[ev.flag] ?? "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {eventFlagLabel[ev.flag] ?? ev.flag}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-ink-500/30">—</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <Thumb url={ev.vehicle_photo_url} alt="Авто" onOpen={setPhoto} />

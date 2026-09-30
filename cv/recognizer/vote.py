@@ -26,6 +26,10 @@ class VoteResult:
     # «накопили ли мы достаточно уверенности» — например для открытия шлагбаума,
     # где важно не число кадров, а накопленное качество чтений.
     score: float = 0.0
+    # Сколько чтений у ближайшего конкурента. Нужен для «отрыва»: доля голосов
+    # не ловит мигание A/B/A/B (там у победителя может быть внушительная доля при
+    # нулевом отрыве), а отрыв ловит.
+    runner_up: int = 0
 
 
 class MajorityVote:
@@ -48,10 +52,13 @@ class MajorityVote:
             return None
         # Ключ — суммарная уверенность; при равной сумме больше доверяем номеру,
         # который прочитан большее число раз.
-        plate, confs = max(
+        ranked = sorted(
             self._by_plate.items(),
             key=lambda kv: (sum(kv[1]), len(kv[1])),
+            reverse=True,
         )
+        plate, confs = ranked[0]
+        runner_up = len(ranked[1][1]) if len(ranked) > 1 else 0
         return VoteResult(
             plate=plate,
             # Наружу отдаём СРЕДНЮЮ, а не сумму: это качество чтения, его backend
@@ -60,4 +67,5 @@ class MajorityVote:
             votes=len(confs),
             total=self._total,
             score=sum(confs),
+            runner_up=runner_up,
         )

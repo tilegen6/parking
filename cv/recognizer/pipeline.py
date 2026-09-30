@@ -186,7 +186,22 @@ class Pipeline:
                 events.append(rec)
         return events
 
-    def _emit(self, res: FrameResult | None, frame, sinks: dict) -> dict | None:
+    def _emit(
+        self,
+        res: FrameResult | None,
+        frame,  # noqa: ANN001
+        sinks: dict,
+        decision: str = "observe",
+    ) -> dict | None:
+        """Отдать событие в приёмники.
+
+        `decision` — что система решила по этому треку:
+          * "open"    — можно открывать шлагбаум (машина стоит перед стрелой);
+          * "observe" — только учёт: либо уверенности не хватило, либо это
+            закрытие трека уже после принятого решения.
+        Поле идёт в запись для Студии и статистики; на формат события для
+        бэкенда оно не влияет — там решение принимается по спискам доступа.
+        """
         if res is None:
             return None
         below = res.confidence < self.cfg.confidence_threshold
@@ -202,6 +217,7 @@ class Pipeline:
         record = {
             **contract,
             "flag": flag,
+            "decision": decision,
             "frame": frame.source_name,
             "candidates": res.alts,
         }

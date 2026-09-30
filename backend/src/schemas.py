@@ -1,6 +1,7 @@
 """Pydantic-схемы (валидация запросов и сериализация ответов)."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -131,24 +132,34 @@ class GateOut(BaseModel):
 
 
 # --- Camera ---
-class CameraCreate(BaseModel):
-    name: str = Field(..., max_length=255)
+class CameraBase(BaseModel):
+    """Общие поля карточки камеры (включая доступ к потоку)."""
+
     ip_address: str | None = Field(None, max_length=64)
     type: str | None = Field(None, max_length=64)
     location: str | None = Field(None, max_length=255)
-    status: str = "unknown"
     gate_id: int | None = None
+    direction: Literal["entry", "exit"] | None = None
+    username: str | None = Field(None, max_length=64)
+    # Пароль принимаем, но никогда не отдаём обратно (см. CameraOut).
+    password: str | None = Field(None, max_length=255)
+    stream_path: str | None = Field(None, max_length=255)
+    stream_url: str | None = Field(None, max_length=512)
 
 
-class CameraUpdate(BaseModel):
+class CameraCreate(CameraBase):
+    name: str = Field(..., max_length=255)
+    status: str = "unknown"
+    rtsp_port: int = Field(554, ge=1, le=65535)
+
+
+class CameraUpdate(CameraBase):
     """Частичное обновление камеры (в т.ч. привязка к шлагбауму)."""
 
     name: str | None = Field(None, max_length=255)
-    ip_address: str | None = Field(None, max_length=64)
-    type: str | None = Field(None, max_length=64)
-    location: str | None = Field(None, max_length=255)
     status: str | None = None
-    gate_id: int | None = None
+    # None = «поле не прислали», порт остаётся прежним (см. exclude_unset).
+    rtsp_port: int | None = Field(None, ge=1, le=65535)
 
 
 class CameraOut(BaseModel):
@@ -161,7 +172,27 @@ class CameraOut(BaseModel):
     location: str | None
     status: str
     gate_id: int | None = None
+    direction: str | None = None
+    username: str | None = None
+    rtsp_port: int = 554
+    stream_path: str | None = None
+    stream_url: str | None = None
+    last_seen_at: datetime | None = None
     created_at: datetime
+    # Пароль наружу не уходит — только признак, что он задан, и готовый URL с
+    # замаскированным паролем (чтобы оператор видел, куда именно подключаемся).
+    has_password: bool = False
+    stream_url_display: str | None = None
+
+
+class CameraCheckResult(BaseModel):
+    """Результат проверки связи с камерой (TCP-пробы порта RTSP)."""
+
+    camera_id: int
+    reachable: bool
+    status: str
+    target: str | None = None
+    detail: str | None = None
 
 
 # --- RecognitionEvent ---
@@ -170,6 +201,8 @@ class RecognitionEventOut(BaseModel):
 
     id: int
     plate_number: str | None
+    # Как номер прислала камера (до канонизации) — для сверки спорных распознаваний
+    plate_raw: str | None = None
     direction: str
     event_time: datetime
     confidence: float | None

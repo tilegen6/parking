@@ -107,6 +107,10 @@ class Settings(BaseSettings):
     # Таймаут запроса к Kaspi (ТЗ: ответ провайдера ≤ 15 c)
     kaspi_http_timeout_seconds: float = 15.0
 
+    # --- CV-сервис (распознавание живого потока) ---
+    # Внутри docker-сети — по имени сервиса; локально — http://localhost:8090
+    cv_service_url: str = "http://cv:8090"
+
     @property
     def database_url(self) -> str:
         """Async-строка подключения для SQLAlchemy / asyncpg."""

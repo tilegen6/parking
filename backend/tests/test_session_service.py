@@ -46,6 +46,58 @@ async def test_entry_creates_active_session(db):
     assert sess.exit_time is None
 
 
+async def test_active_session_unique_constraint(db):
+    """P0-7: БД не даёт двум активным сессиям по одному (номер, шлагбаум).
+
+    Это последняя линия обороны против гонки: даже если два параллельных ENTRY
+    оба прошли проверку «активной нет», второй INSERT отвергается.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    db.add(
+        ParkingSession(
+            plate_number="777RACE01",
+            status=SessionStatus.ACTIVE,
+            entry_time=T0,
+        )
+    )
+    await db.flush()
+    db.add(
+        ParkingSession(
+            plate_number="777RACE01",
+            status=SessionStatus.ACTIVE,
+            entry_time=T0 + timedelta(seconds=1),
+        )
+    )
+    try:
+        await db.flush()
+        raise AssertionError("ожидали IntegrityError на второй активной сессии")
+    except IntegrityError:
+        pass
+    await db.rollback()
+
+
+async def test_closed_session_allows_new_active(db):
+    """Уникальность только среди активных: после выезда тот же номер въезжает."""
+    db.add(
+        ParkingSession(
+            plate_number="777RACE02",
+            status=SessionStatus.PAID,  # закрыта — вне частичного индекса
+            entry_time=T0,
+            exit_time=T0 + timedelta(hours=1),
+        )
+    )
+    await db.flush()
+    db.add(
+        ParkingSession(
+            plate_number="777RACE02",
+            status=SessionStatus.ACTIVE,
+            entry_time=T0 + timedelta(hours=2),
+        )
+    )
+    await db.flush()  # не должно падать
+
+
 async def test_duplicate_entry_restarts_session_start(db):
     """Машина стоит перед шлагбаумом: старт = ПОСЛЕДНЕЕ событие серии + пометка."""
     e1, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)

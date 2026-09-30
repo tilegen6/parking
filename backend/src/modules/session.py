@@ -23,6 +23,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import ColumnElement, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import settings
@@ -42,7 +43,7 @@ from src.models import (
     RecognitionEvent,
     SessionStatus,
 )
-from src.modules.access import record_alert, resolve_access
+from src.modules.access import normalize_plate, record_alert, resolve_access
 from src.modules.tariff import get_active_tariff, tariff_price
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
@@ -341,13 +342,16 @@ async def _handle_entry(
         reentry = timedelta(seconds=settings.reentry_new_session_seconds)
         ev_at = _as_aware(event.event_time)
         last = _as_aware(active.last_seen) or _as_aware(active.entry_time)
-        entry = _as_aware(active.entry_time)
 
         # ТС-3: новый въезд спустя большой промежуток = выезд был пропущен.
         # Старую сессию закрываем как auto_closed (на ручную проверку),
         # для машины открываем новую активную.
         if ev_at is not None and last is not None and (ev_at - last) > reentry:
             active.status = SessionStatus.AUTO_CLOSED
+            # Снимаем старую сессию с активного индекса ДО вставки новой, иначе
+            # частичный уникальный индекс (uq_active_session_plate_gate) отвергнет
+            # INSERT — на миг обе были бы active по одному номеру.
+            await session.flush()
             logger.warning(
                 "ENTRY при зависшей сессии #%s (%s): старая → auto_closed, "
                 "открываем новую (пропущенный выезд?)",
@@ -361,42 +365,7 @@ async def _handle_entry(
                 detail=f"old={active.id} auto_closed",
             )
 
-        # ТС-2: дубль на въезде — новую сессию не создаём, событие помечаем.
-        event.flag = EventFlag.DUPLICATE
-
-        # Машина стоит перед шлагбаумом и камера видит её несколько раз подряд —
-        # стартом сессии считаем ПОСЛЕДНЕЕ событие серии (решение клиента):
-        # водитель не платит за ожидание снаружи. Помечаем entry_adjusted,
-        # полная история событий остаётся в recognition_event.
-        #
-        # Сдвигаем только пока дубли идут «подряд» (entry_restart_window) и
-        # только вперёд — повторное распознавание машины, давно стоящей на
-        # территории, не должно обнулять счёт.
-        if (
-            ev_at is not None
-            and last is not None
-            and entry is not None
-            and entry <= ev_at
-            and (ev_at - last) <= window
-        ):
-            active.entry_time = event.event_time
-            active.last_seen = event.event_time
-            active.entry_event_id = event.id
-            if event.camera_id is not None:
-                active.entry_camera_id = event.camera_id
-            active.entry_adjusted = True
-            logger.info(
-                "ENTRY дубль: %s → старт сессии сдвинут на последнее событие",
-                event.plate_number,
-            )
-            return SessionResult("entry_restarted", active.id)
-
-        active.last_seen = event.event_time
-        logger.info(
-            "ENTRY дубль (вне окна): %s → обновлён только last_seen",
-            event.plate_number,
-        )
-        return SessionResult("updated_last_seen", active.id)
+        return _apply_duplicate_entry(session, event, active, window)
 
     # ТС-9: точного совпадения нет, но есть активная сессия с номером,
     # отличающимся на 1 символ — возможная ошибка распознавания (O↔0, I↔1).
@@ -415,9 +384,73 @@ async def _handle_entry(
             "possible_misread", near.id, detail=f"похож на {near.plate_number}"
         )
 
-    parking = await _open_session(session, event, gate_id, access)
+    # Гонка: пачка ENTRY-событий одного проезда может пройти проверку «активной
+    # нет» одновременно. Уникальный индекс не даст создать второй дубль — ловим
+    # IntegrityError и до-обрабатываем как обычный дубль въезда.
+    try:
+        async with session.begin_nested():
+            parking = await _open_session(session, event, gate_id, access)
+    except IntegrityError:
+        window = timedelta(seconds=settings.entry_restart_window_seconds)
+        active = await _find_active_at_gate(session, event.plate_number, gate_id)  # type: ignore[arg-type]
+        if active is None:
+            raise
+        logger.warning(
+            "ENTRY гонка: параллельно уже создана сессия #%s (%s) — обработано "
+            "как дубль",
+            active.id,
+            event.plate_number,
+        )
+        return _apply_duplicate_entry(session, event, active, window)
+
     logger.info("ENTRY: открыта сессия #%s для %s", parking.id, event.plate_number)
     return SessionResult("created", parking.id)
+
+
+def _apply_duplicate_entry(
+    session: AsyncSession,
+    event: RecognitionEvent,
+    active: ParkingSession,
+    window: timedelta,
+) -> SessionResult:
+    """ТС-2: повторное ENTRY по уже активной сессии — новую не создаём.
+
+    Машина стоит перед шлагбаумом и камера видит её несколько раз подряд —
+    стартом сессии считаем ПОСЛЕДНЕЕ событие серии (решение клиента): водитель
+    не платит за ожидание снаружи. Сдвигаем только пока дубли идут «подряд»
+    (entry_restart_window) и только вперёд — повторное распознавание давно
+    стоящей машины не должно обнулять счёт. Полная история — в recognition_event.
+    """
+    event.flag = EventFlag.DUPLICATE
+    ev_at = _as_aware(event.event_time)
+    last = _as_aware(active.last_seen) or _as_aware(active.entry_time)
+    entry = _as_aware(active.entry_time)
+
+    if (
+        ev_at is not None
+        and last is not None
+        and entry is not None
+        and entry <= ev_at
+        and (ev_at - last) <= window
+    ):
+        active.entry_time = event.event_time
+        active.last_seen = event.event_time
+        active.entry_event_id = event.id
+        if event.camera_id is not None:
+            active.entry_camera_id = event.camera_id
+        active.entry_adjusted = True
+        logger.info(
+            "ENTRY дубль: %s → старт сессии сдвинут на последнее событие",
+            event.plate_number,
+        )
+        return SessionResult("entry_restarted", active.id)
+
+    active.last_seen = event.event_time
+    logger.info(
+        "ENTRY дубль (вне окна): %s → обновлён только last_seen",
+        event.plate_number,
+    )
+    return SessionResult("updated_last_seen", active.id)
 
 
 async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> SessionResult:
@@ -584,7 +617,11 @@ async def list_sessions(
     """Список парковочных сессий с фильтрами, сортировкой и пагинацией."""
     conditions: list[ColumnElement[bool]] = []
     if plate:
-        conditions.append(ParkingSession.plate_number.ilike(f"%{plate}%"))
+        # Ищем по канону: в БД хранится нормализованный номер, а оператор может
+        # ввести с пробелами/кириллицей.
+        conditions.append(
+            ParkingSession.plate_number.ilike(f"%{normalize_plate(plate)}%")
+        )
     if status:
         conditions.append(ParkingSession.status == status.lower())
     if gate_id is not None:

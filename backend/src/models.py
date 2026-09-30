@@ -7,10 +7,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -213,6 +216,26 @@ class Camera(Base):
     gate_id: Mapped[int | None] = mapped_column(
         ForeignKey("gate.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Направление проезда, которое снимает камера: entry | exit. Для потока RTSP
+    # это единственный источник направления (в RTSP нет метаданных Hikvision).
+    direction: Mapped[str | None] = mapped_column(String(16), nullable=True)
+
+    # --- Доступ к видеопотоку (RTSP) --------------------------------------- #
+    # Учётка веб-морды камеры: у Hikvision тот же логин/пароль пускает в RTSP.
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Пароль наружу не отдаём: в CameraOut его нет, только признак has_password.
+    password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    rtsp_port: Mapped[int] = mapped_column(Integer, default=554, server_default="554")
+    # Путь потока. У Hikvision 101 = основной, 102 = субпоток (легче по сети).
+    stream_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Полный URL целиком — побеждает собранный по частям. Нужен для нестандартных
+    # источников: телефон-камера (http://ip:4747/video), NVR, чужие вендоры.
+    stream_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+    # Когда камера последний раз подавала признаки жизни (событие или проверка).
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -228,7 +251,12 @@ class RecognitionEvent(Base):
     __tablename__ = "recognition_event"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # Канонический номер (нормализован на приёме): по нему идут ВСЕ сравнения —
+    # активная сессия, списки доступа, lookup Kaspi.
     plate_number: Mapped[str | None] = mapped_column(String(32), index=True)
+    # Как номер прислала камера (регистр/пробелы/кириллица) — для отображения и
+    # разбора спорных распознаваний. В логике не участвует.
+    plate_raw: Mapped[str | None] = mapped_column(String(64), nullable=True)
     direction: Mapped[str] = mapped_column(String(16), default=Direction.UNKNOWN)
     event_time: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True, server_default=func.now()
@@ -262,6 +290,24 @@ class ParkingSession(Base):
     """Парковочная сессия: агрегат событий въезда и выезда одного авто."""
 
     __tablename__ = "parking_session"
+    __table_args__ = (
+        # Составной индекс под частый фильтр «активна ли сессия этого номера»
+        # (был только в миграции 0002 — синхронизируем модель со схемой).
+        Index("ix_parking_session_plate_status", "plate_number", "status"),
+        # Одна активная сессия на (номер, шлагбаум) — защита от гонки: пачка
+        # ENTRY-событий Hikvision на один проезд иначе плодит дубли. COALESCE:
+        # gate_id часто NULL (событие без камеры), а NULL в уникальном индексе
+        # считается различным — свели бы защиту на нет. Частичный (WHERE active),
+        # чтобы закрытые/отменённые сессии по тому же номеру не конфликтовали.
+        Index(
+            "uq_active_session_plate_gate",
+            "plate_number",
+            func.coalesce(text("gate_id"), -1),
+            unique=True,
+            postgresql_where=text("status = 'active'"),
+            sqlite_where=text("status = 'active'"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     plate_number: Mapped[str] = mapped_column(String(32), index=True)

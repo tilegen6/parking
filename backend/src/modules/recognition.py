@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import hikvision
 from src.database import get_session
-from src.models import Camera, RecognitionEvent
+from src.models import Camera, CameraStatus, RecognitionEvent
 from src.modules import session as session_service
+from src.modules.access import normalize_plate
 from src.schemas import DirectionAssign, PaginatedEvents, RecognitionEventOut
 from src.storage import storage
 
@@ -34,6 +35,15 @@ async def _resolve_camera_id(
     )
     row = result.first()
     return row[0] if row else None
+
+
+async def _mark_camera_alive(session: AsyncSession, camera_id: int) -> None:
+    """Отметить камеру живой: статус online + время последнего сигнала."""
+    camera = await session.get(Camera, camera_id)
+    if camera is None:
+        return
+    camera.status = CameraStatus.ONLINE
+    camera.last_seen_at = datetime.now(timezone.utc)
 
 
 async def _read_event(request: Request) -> hikvision.ParsedEvent:
@@ -103,9 +113,19 @@ async def receive_anpr_event(
             vehicle_url = url
 
     camera_id = await _resolve_camera_id(session, event.camera_name)
+    if camera_id is not None:
+        # Событие = доказательство, что камера жива. Иначе статус online не
+        # выставлял никто и на дашборде всегда висело «камер онлайн: 0».
+        await _mark_camera_alive(session, camera_id)
+
+    # Канонизируем номер один раз здесь — дальше вся логика (сессии, списки,
+    # Kaspi) сравнивает уже нормализованный. Сырой текст храним отдельно.
+    raw_plate = event.plate_number
+    norm_plate = normalize_plate(raw_plate) or None
 
     record = RecognitionEvent(
-        plate_number=event.plate_number,
+        plate_number=norm_plate,
+        plate_raw=raw_plate,
         direction=event.direction,
         event_time=event.event_time or datetime.now(timezone.utc),
         confidence=event.confidence,
@@ -152,7 +172,10 @@ async def list_events(
     """Список событий распознавания с пагинацией и фильтрами (для таблицы в админке)."""
     conditions: list[ColumnElement[bool]] = []
     if plate:
-        conditions.append(RecognitionEvent.plate_number.ilike(f"%{plate}%"))
+        # В БД номер канонический — приводим и поисковый запрос
+        conditions.append(
+            RecognitionEvent.plate_number.ilike(f"%{normalize_plate(plate)}%")
+        )
     if direction:
         conditions.append(RecognitionEvent.direction == direction.upper())
     if camera_id is not None:

@@ -256,6 +256,9 @@ class StreamManager:
                     "direction": rec.get("direction"),
                     "confidence": rec.get("confidence"),
                     "flag": rec.get("flag"),
+                    # open — сигнал шлагбауму (машина ещё перед стрелой),
+                    # observe — только учёт (уверенности не хватило / трек закрыт)
+                    "decision": rec.get("decision", "observe"),
                     "backend_action": br.get("session_action"),
                     "backend_error": rec.get("backend_error"),
                     "time": rec.get("event_time"),
@@ -327,6 +330,14 @@ class StreamManager:
                     # отсеяно фильтром качества — растёт при плохом освещении/смазе
                     "frames_dropped": getattr(h.sp, "frames_dropped", 0),
                     "events": h.sp.events_emitted,
+                    # сигналов «открыть шлагбаум» (машина была перед стрелой)
+                    "opens": getattr(h.sp, "opens_emitted", 0),
+                    # треков, по которым решение так и не приняли → нужен оператор
+                    "stalled": getattr(h.sp, "stalled", 0),
+                    # почему НЕ открыли последний раз: stale_hit / few_votes /
+                    # no_agreement / low_confidence / never_grew / leaving / ...
+                    "last_reason": getattr(h.sp, "last_reason", ""),
+                    "tracks_active": len(getattr(h.sp, "_tracks", {})),
                     "last_plate": h.sp.last_plate,
                     "opened": getattr(src, "opened", None),
                     "reconnects": getattr(src, "reconnects", None),

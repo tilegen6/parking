@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getPipelineVersions,
   recognizePlate,
-  type PipelineVersion,
+  type PipelineOption,
   type RecognizeResult,
 } from "../api/cv";
 import { PlateReadout } from "../components/PlateReadout";
@@ -15,15 +15,20 @@ export function RecognizePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threshold, setThreshold] = useState(0.4);
-  const [versions, setVersions] = useState<PipelineVersion[]>([]);
-  const [version, setVersion] = useState("fastplate");
+  // Две независимые оси: детектор (находит номер) и OCR (читает символы).
+  const [detectors, setDetectors] = useState<PipelineOption[]>([]);
+  const [engines, setEngines] = useState<PipelineOption[]>([]);
+  const [detector, setDetector] = useState("plate");
+  const [engine, setEngine] = useState("fastplate");
 
-  // список версий пайплайна с сервиса (для выпадающего списка)
+  // каталог осей пайплайна с сервиса (для выпадающих списков)
   useEffect(() => {
     getPipelineVersions()
       .then((r) => {
-        setVersions(r.versions);
-        setVersion(r.default);
+        setDetectors(r.detectors);
+        setEngines(r.engines);
+        setDetector(r.default_detector);
+        setEngine(r.default_engine);
       })
       .catch(() => {
         /* сервис не поднят — оставим дефолт */
@@ -36,24 +41,27 @@ export function RecognizePage() {
     setError(null);
   };
 
-  const recognize = useCallback(async (f: File, ver: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      setResult(await recognizePlate(f, ver));
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? `${e.message}. Запущен ли CV-сервис? (python cv/service.py)`
-          : "Ошибка распознавания",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const recognize = useCallback(
+    async (f: File, eng: string, det: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        setResult(await recognizePlate(f, { engine: eng, detector: det }));
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? `${e.message}. Запущен ли CV-сервис? (python cv/service.py)`
+            : "Ошибка распознавания",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   const run = () => {
-    if (file) recognize(file, version);
+    if (file) recognize(file, engine, detector);
   };
 
   // Вставка фото из буфера обмена (Ctrl+V / Cmd+V) — где угодно на странице
@@ -68,7 +76,7 @@ export function RecognizePage() {
             e.preventDefault();
             setFile(f);
             setResult(null);
-            recognize(f, version);
+            recognize(f, engine, detector);
           }
           return;
         }
@@ -76,7 +84,7 @@ export function RecognizePage() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [recognize, version]);
+  }, [recognize, engine, detector]);
 
   return (
     <div className="space-y-6">
@@ -125,23 +133,45 @@ export function RecognizePage() {
           />
         </label>
 
-        {versions.length > 0 && (
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-500/70">
-              Версия пайплайна
-            </span>
-            <select
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-              className="w-full max-w-md rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink transition focus:border-sky focus:outline-none"
-            >
-              {versions.map((v) => (
-                <option key={v.name} value={v.name}>
-                  {v.label} — {v.desc}
-                </option>
-              ))}
-            </select>
-          </label>
+        {(detectors.length > 0 || engines.length > 0) && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink-500/70">
+                Детектор (находит номер)
+              </span>
+              <select
+                value={detector}
+                onChange={(e) => setDetector(e.target.value)}
+                title={detectors.find((d) => d.name === detector)?.desc}
+                className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink transition focus:border-sky focus:outline-none"
+              >
+                {detectors.map((d) => (
+                  <option key={d.name} value={d.name} disabled={!d.available}>
+                    {d.label}
+                    {d.available ? "" : " — не установлен"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-ink-500/70">
+                OCR (читает символы)
+              </span>
+              <select
+                value={engine}
+                onChange={(e) => setEngine(e.target.value)}
+                title={engines.find((en) => en.name === engine)?.desc}
+                className="w-full rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink transition focus:border-sky focus:outline-none"
+              >
+                {engines.map((en) => (
+                  <option key={en.name} value={en.name} disabled={!en.available}>
+                    {en.label}
+                    {en.available ? "" : " — не установлен"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         )}
 
         <div className="flex items-center gap-3">

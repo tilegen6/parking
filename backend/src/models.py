@@ -319,6 +319,13 @@ class ParkingSession(Base):
     exit_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Неизменяемый якорь серии — время ПЕРВОГО события въезда. entry_time может
+    # сдвигаться на последний дубль (машина ждёт у шлагбаума), но окно сдвига
+    # считается от якоря, а не от last_seen — иначе машина, которую видят раз в
+    # 10 мин, обнуляла бы счёт бесконечно (безлимитная бесплатная парковка).
+    series_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Последнее «замеченное» событие — обновляется дублями (ТЗ §6.2)
     last_seen: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

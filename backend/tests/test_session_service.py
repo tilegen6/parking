@@ -158,6 +158,55 @@ async def test_duplicate_entry_series_billed_from_last(db):
     assert sess.price == 200.0
 
 
+async def test_start_shift_bounded_by_anchor(db):
+    """P0-5: сдвиг старта ограничен окном ОТ ЯКОРЯ, а не бесконечно.
+
+    Раньше окно считалось от last_seen: машину, которую камера видит раз в
+    9 минут, можно было двигать вечно → безлимитная бесплатная парковка.
+    """
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    # +9 мин — внутри окна (10 мин) от якоря T0 → сдвиг
+    _, r2 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(minutes=9))
+    assert r2.action == "entry_restarted"
+    # +18 мин — 18 > 10 мин ОТ ЯКОРЯ (хотя всего 9 мин от прошлого) → НЕ сдвигаем
+    _, r3 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(minutes=18))
+    assert r3.action == "updated_last_seen"
+    # +27 мин — тем более не сдвигаем
+    _, r4 = await _emit(db, "123ABC02", Direction.ENTRY, T0 + timedelta(minutes=27))
+    assert r4.action == "updated_last_seen"
+    sess = await db.get(ParkingSession, r1.session_id)
+    # старт застыл на последнем сдвиге в пределах окна (+9 мин), не уполз дальше
+    assert _naive(sess.entry_time) == _naive(T0 + timedelta(minutes=9))
+
+
+async def test_no_start_shift_after_denied_exit(db):
+    """P0-5/#21: после отказа в выезде (долг) повторный ENTRY не обнуляет счёт."""
+    db.add(
+        Tariff(
+            name="Тест",
+            free_minutes=0,
+            price_per_hour=200,
+            daily_cap=None,
+            currency="KZT",
+            is_active=True,
+        )
+    )
+    await db.flush()
+    _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)
+    # выезд через час — недоплата, шлагбаум закрыт, сессия осталась активной
+    _, rx = await _emit(db, "123ABC02", Direction.EXIT, T0 + timedelta(hours=1))
+    assert rx.action == "exit_denied_unpaid"
+    # водитель подъезжает к въездной камере ещё раз (объехал/развернулся)
+    _, r2 = await _emit(
+        db, "123ABC02", Direction.ENTRY, T0 + timedelta(hours=1, seconds=30)
+    )
+    # старт НЕ сдвигается — долг не должен обнуляться
+    assert r2.action == "updated_last_seen"
+    sess = await db.get(ParkingSession, r1.session_id)
+    assert _naive(sess.entry_time) == _naive(T0)
+    assert sess.price == 200.0  # накопленный долг цел
+
+
 async def test_entry_exit_closes_when_free(db):
     # без активного тарифа парковка бесплатна -> шлагбаум открыт -> paid
     _, r1 = await _emit(db, "123ABC02", Direction.ENTRY, T0)

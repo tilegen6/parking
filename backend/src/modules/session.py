@@ -298,6 +298,7 @@ async def _open_session(
         plate_number=event.plate_number,
         status=SessionStatus.ACTIVE,
         entry_time=event.event_time,
+        series_started_at=event.event_time,  # якорь окна сдвига (не двигается)
         last_seen=event.event_time,
         entry_event_id=event.id,
         entry_camera_id=event.camera_id,
@@ -417,21 +418,29 @@ def _apply_duplicate_entry(
 
     Машина стоит перед шлагбаумом и камера видит её несколько раз подряд —
     стартом сессии считаем ПОСЛЕДНЕЕ событие серии (решение клиента): водитель
-    не платит за ожидание снаружи. Сдвигаем только пока дубли идут «подряд»
-    (entry_restart_window) и только вперёд — повторное распознавание давно
-    стоящей машины не должно обнулять счёт. Полная история — в recognition_event.
+    не платит за ожидание снаружи.
+
+    Окно сдвига считаем от ЯКОРЯ серии (первого события), а не от last_seen:
+    иначе машина, которую камера видит раз в <window, сдвигала бы старт
+    бесконечно — безлимитная бесплатная парковка. С якорем суммарный сдвиг
+    ограничен окном (напр. 10 мин от первого события).
+
+    Не сдвигаем, если по сессии уже есть долг (была попытка выезда с недоплатой):
+    иначе повторный подъезд к въездной камере обнулял бы накопленный счёт.
     """
     event.flag = EventFlag.DUPLICATE
     ev_at = _as_aware(event.event_time)
-    last = _as_aware(active.last_seen) or _as_aware(active.entry_time)
     entry = _as_aware(active.entry_time)
+    anchor = _as_aware(active.series_started_at) or entry
+    has_debt = active.price is not None and active.price > (active.paid_amount or 0)
 
     if (
-        ev_at is not None
-        and last is not None
+        not has_debt
+        and ev_at is not None
+        and anchor is not None
         and entry is not None
         and entry <= ev_at
-        and (ev_at - last) <= window
+        and (ev_at - anchor) <= window
     ):
         active.entry_time = event.event_time
         active.last_seen = event.event_time
@@ -447,7 +456,7 @@ def _apply_duplicate_entry(
 
     active.last_seen = event.event_time
     logger.info(
-        "ENTRY дубль (вне окна): %s → обновлён только last_seen",
+        "ENTRY дубль (вне окна/с долгом): %s → обновлён только last_seen",
         event.plate_number,
     )
     return SessionResult("updated_last_seen", active.id)

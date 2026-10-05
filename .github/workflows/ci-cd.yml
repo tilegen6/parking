@@ -288,7 +288,9 @@ jobs:
   deploy:
     name: "Deploy to VPS"
     needs: [build-and-push]
-    if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    # !cancelled() && !failure() — как у build-and-push: иначе deploy пропускается
+    # из-за skip-каскада, когда backend/cv/frontend не менялись и были skipped.
+    if: ${{ !cancelled() && !failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     # Protected environment → деплой ждёт ручного подтверждения (required reviewers)
     environment: production

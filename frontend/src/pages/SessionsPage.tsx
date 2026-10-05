@@ -1,16 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  useActiveSessions,
-  useCancelSession,
-  useGates,
-  useSessions,
-} from "../api/hooks";
+import { useActiveSessions, useSessions } from "../api/hooks";
 import { PlateReadout } from "../components/PlateReadout";
 import { StatTile } from "../components/StatTile";
 import type { SessionStatus, SessionsFilters } from "../api/types";
 import {
-  accessTypeChip,
   formatAmount,
   formatDateTime,
   formatDuration,
@@ -24,7 +18,6 @@ const PAGE_LIMIT = 20;
 export function SessionsPage() {
   const [plate, setPlate] = useState("");
   const [status, setStatus] = useState<SessionStatus | "">("");
-  const [gateId, setGateId] = useState<string>("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -34,20 +27,15 @@ export function SessionsPage() {
     limit: PAGE_LIMIT,
     plate: plate || undefined,
     status: status || undefined,
-    gate_id: gateId ? Number(gateId) : undefined,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   };
 
   const { data, isLoading, isError, isFetching } = useSessions(filters);
   const active = useActiveSessions();
-  const cancel = useCancelSession();
-  const gates = useGates();
-  const gateName = (id: number | null) =>
-    id == null ? null : (gates.data?.find((g) => g.id === id)?.name ?? `#${id}`);
 
   const resetToFirstPage = () => setPage(1);
-  const hasFilters = Boolean(plate || status || gateId || dateFrom || dateTo);
+  const hasFilters = Boolean(plate || status || dateFrom || dateTo);
 
   return (
     <div className="space-y-6">
@@ -112,25 +100,6 @@ export function SessionsPage() {
             <option value="unpaid">Выехал</option>
             <option value="paid">Оплачено</option>
             <option value="cancelled">Отменена</option>
-            <option value="auto_closed">Закрыта авто</option>
-          </select>
-        </Field>
-        <Field label="Шлагбаум">
-          <select
-            value={gateId}
-            onChange={(e) => {
-              setGateId(e.target.value);
-              resetToFirstPage();
-            }}
-            className="input"
-          >
-            <option value="">Все</option>
-            {gates.data?.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-                {g.zone ? ` · ${g.zone}` : ""}
-              </option>
-            ))}
           </select>
         </Field>
         <Field label="С даты">
@@ -160,7 +129,6 @@ export function SessionsPage() {
             onClick={() => {
               setPlate("");
               setStatus("");
-              setGateId("");
               setDateFrom("");
               setDateTo("");
               resetToFirstPage();
@@ -179,7 +147,6 @@ export function SessionsPage() {
             <tr>
               <th className="px-4 py-3">Номер</th>
               <th className="px-4 py-3">Статус</th>
-              <th className="px-4 py-3">Шлагбаум</th>
               <th className="px-4 py-3">Въезд</th>
               <th className="px-4 py-3">Выезд</th>
               <th className="px-4 py-3">Время стоянки</th>
@@ -190,7 +157,7 @@ export function SessionsPage() {
           <tbody className="divide-y divide-line">
             {isLoading && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
                   Загрузка…
                 </td>
               </tr>
@@ -198,7 +165,7 @@ export function SessionsPage() {
 
             {isError && !isLoading && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-rose-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-rose-500">
                   Ошибка загрузки. Проверьте backend.
                 </td>
               </tr>
@@ -206,7 +173,7 @@ export function SessionsPage() {
 
             {!isLoading && !isError && data?.items.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-ink-500/50">
+                <td colSpan={7} className="px-4 py-12 text-center text-ink-500/50">
                   Сессий пока нет
                 </td>
               </tr>
@@ -215,17 +182,7 @@ export function SessionsPage() {
             {data?.items.map((s) => (
               <tr key={s.id} className="animate-fade-up hover:bg-paper">
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <PlateReadout plate={s.plate_number} size="sm" />
-                    {s.access_type && accessTypeChip[s.access_type] && (
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${accessTypeChip[s.access_type].cls}`}
-                        title="Способ проезда по спискам доступа"
-                      >
-                        {accessTypeChip[s.access_type].label}
-                      </span>
-                    )}
-                  </div>
+                  <PlateReadout plate={s.plate_number} size="sm" />
                 </td>
                 <td className="px-4 py-3">
                   <span
@@ -236,19 +193,6 @@ export function SessionsPage() {
                   >
                     {sessionStatusLabel[s.status] ?? s.status}
                   </span>
-                  {s.is_stale && (
-                    <span
-                      className="ml-1.5 rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700"
-                      title="ТС-8: активна дольше 24ч — закрой вручную или разберись"
-                    >
-                      ⚠ зависла 24ч+
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-ink-500/70">
-                  {gateName(s.gate_id) ?? (
-                    <span className="text-ink-500/30">—</span>
-                  )}
                 </td>
                 <td className="px-4 py-3 font-mono text-ink-500/70">
                   {formatDateTime(s.entry_time)}
@@ -263,32 +207,12 @@ export function SessionsPage() {
                   {formatAmount(s.price)}
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-3">
-                    {s.is_stale && (
-                      <button
-                        disabled={cancel.isPending}
-                        onClick={() => cancel.mutate(s.id)}
-                        className="text-sm font-medium text-rose-600 transition hover:underline disabled:opacity-50"
-                        title="ТС-8: ручное закрытие зависшей сессии"
-                      >
-                        Отменить
-                      </button>
-                    )}
-                    {(s.status === "unpaid" || s.status === "active") && (
-                      <Link
-                        to={`/pay/${s.id}`}
-                        className="text-sm font-medium text-brand transition hover:underline"
-                      >
-                        Оплатить
-                      </Link>
-                    )}
-                    <Link
-                      to={`/sessions/${s.id}`}
-                      className="text-sm font-medium text-sky-700 transition hover:underline"
-                    >
-                      Открыть
-                    </Link>
-                  </div>
+                  <Link
+                    to={`/sessions/${s.id}`}
+                    className="text-sm font-medium text-sky-700 transition hover:underline"
+                  >
+                    Открыть
+                  </Link>
                 </td>
               </tr>
             ))}

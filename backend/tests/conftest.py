@@ -17,13 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from src.database import Base, get_session
-from src.modules import access as access_module
-from src.modules import auth as auth_module
-from src.modules import camera as camera_module
-from src.modules import gate as gate_module
-from src.modules import recognition as recognition_module
 from src.modules import session as session_module
-from src.modules import user as user_module
 
 
 @pytest_asyncio.fixture
@@ -53,15 +47,9 @@ async def db(sessionmaker_):
 
 @pytest_asyncio.fixture
 async def client(sessionmaker_):
-    """HTTP-клиент к минимальному приложению (роутеры сессий и распознавания)."""
+    """HTTP-клиент к минимальному приложению с роутером сессий."""
     app = FastAPI()
     app.include_router(session_module.router)
-    app.include_router(recognition_module.router)
-    app.include_router(gate_module.router)
-    app.include_router(camera_module.router)
-    app.include_router(auth_module.router)
-    app.include_router(user_module.router)
-    app.include_router(access_module.router)
 
     async def _override_get_session():
         async with sessionmaker_() as s:

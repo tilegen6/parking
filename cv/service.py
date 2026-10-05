@@ -89,6 +89,11 @@ DETECTORS: dict[str, dict] = {
         "desc": "OCR по всему кадру — для синтетики/готовых кропов",
         "pkg": None,
     },
+    "synthetic": {
+        "label": "Демо-стенд (по контуру)",
+        "desc": "находит плашку на синтетике — для имитации проездов без камеры",
+        "pkg": None,
+    },
 }
 ENGINES: dict[str, dict] = {
     "fastplate": {
@@ -513,6 +518,12 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
         if req.direction not in ("entry", "exit"):
             raise HTTPException(400, "direction: entry | exit")
         eng, det = resolve(req.version, req.engine, req.detector)
+        # Демо-стенд: боевые ONNX-детекторы синтетику не находят и не дают бокс,
+        # а без бокса не проверить ни зону, ни приближение — сценарий открытия
+        # шлагбаума стал бы непроверяемым. Подставляем контурный детектор, если
+        # оператор явно не выбрал другой.
+        if req.url == "demo" and req.detector is None:
+            eng, det = "template", "synthetic"
         try:
             return stream_mgr.start(req, eng, det)
         except RuntimeError as e:  # движок/детектор не установлен / нет cv2

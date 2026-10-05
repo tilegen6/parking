@@ -55,6 +55,10 @@ def make_detector(cfg: RecognizerConfig):
         from .detect import YoloPlateDetector
 
         return YoloPlateDetector(cfg.plate_model)
+    if cfg.detector == "synthetic":
+        from .detect import SyntheticPlateDetector
+
+        return SyntheticPlateDetector()
     from .detect import WholeFrameDetector
 
     return WholeFrameDetector()

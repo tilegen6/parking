@@ -21,7 +21,7 @@ from src.modules.payment_provider import (
     MockPaymentProvider,
     PaymentProvider,
 )
-from src.modules.tariff import get_active_tariff, tariff_price
+from src.modules.tariff import get_active_tariff, price_for_session
 from src.schemas import (
     BillingStatsOut,
     PaymentCreate,
@@ -49,13 +49,13 @@ def _aware(dt: datetime | None) -> datetime | None:
 async def amount_due(session: AsyncSession, parking: ParkingSession) -> float:
     """Сколько сейчас должна сессия: цена за время стоянки минус уже оплачено.
 
-    Для активной берём «сейчас», для выехавшей — exit_time.
+    Для активной берём «сейчас», для выехавшей — exit_time. Расчёт цены —
+    через единую price_for_session (учитывает зелёный/жёлтый список), иначе с
+    бесплатных машин списывались бы реальные деньги.
     """
     tariff = await get_active_tariff(session)
-    entry = _aware(parking.entry_time)
     ref = _aware(parking.exit_time) or datetime.now(timezone.utc)
-    duration = int((ref - entry).total_seconds()) if entry is not None else 0
-    price = tariff_price(duration, tariff)
+    price = price_for_session(parking, tariff, ref)
     return round(max(0.0, price - (parking.paid_amount or 0.0)), 2)
 
 

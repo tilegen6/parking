@@ -206,6 +206,104 @@ async def test_yellow_overstay_is_charged(db):
     assert rx.detail == "due=200"
 
 
+async def test_yellow_expired_pass_billed_from_entry_not_valid_until(db):
+    """P0-6: просроченный жёлтый пропуск — счёт от ВЪЕЗДА, не от valid_until.
+
+    Раньше billable = exit − valid_until: если пропуск истёк задолго до въезда,
+    выходил счёт за десятки часов ДО въезда (14200 вместо 200) и выезд блокировался.
+    """
+    g, cam = await _gate_cam(db)
+    db.add(
+        Tariff(
+            name="t", free_minutes=0, price_per_hour=200, daily_cap=None, is_active=True
+        )
+    )
+    # пропуск истёк за 3 суток ДО въезда
+    db.add(
+        AccessEntry(
+            plate="777YEL77",
+            list_type=AccessListType.YELLOW,
+            gate_id=g.id,
+            valid_until=T0 - timedelta(days=3),
+        )
+    )
+    await db.flush()
+    await _emit(db, "777YEL77", Direction.ENTRY, T0, cam.id)
+    _, rx = await _emit(db, "777YEL77", Direction.EXIT, T0 + timedelta(hours=1), cam.id)
+    # стоянка ровно 1 час → 200, а не «71 час от даты пропуска»
+    assert rx.detail == "due=200"
+    assert (await db.get(ParkingSession, rx.session_id)).price == 200.0
+
+
+async def test_yellow_without_valid_until_is_normal_paid(db):
+    """P0-6: жёлтый без срока льготы = обычная платная (не бесплатно навсегда)."""
+    g, cam = await _gate_cam(db)
+    db.add(
+        Tariff(
+            name="t", free_minutes=0, price_per_hour=200, daily_cap=None, is_active=True
+        )
+    )
+    db.add(
+        AccessEntry(
+            plate="777YEL77",
+            list_type=AccessListType.YELLOW,
+            gate_id=g.id,
+            valid_until=None,  # льготы нет
+        )
+    )
+    await db.flush()
+    await _emit(db, "777YEL77", Direction.ENTRY, T0, cam.id)
+    _, rx = await _emit(db, "777YEL77", Direction.EXIT, T0 + timedelta(hours=1), cam.id)
+    assert rx.action == "exit_denied_unpaid"  # платит как обычная
+    assert rx.detail == "due=200"
+
+
+async def test_green_free_via_amount_due(db):
+    """P0-3: у зелёной сессии долг = 0 (amount_due не должен брать деньги)."""
+    from src.modules.payment import amount_due
+
+    g, cam = await _gate_cam(db)
+    db.add(
+        Tariff(
+            name="t", free_minutes=0, price_per_hour=200, daily_cap=None, is_active=True
+        )
+    )
+    db.add(AccessEntry(plate="777GRN77", list_type=AccessListType.GREEN, gate_id=g.id))
+    await db.flush()
+    _, r1 = await _emit(db, "777GRN77", Direction.ENTRY, T0, cam.id)
+    sess = await db.get(ParkingSession, r1.session_id)
+    # даже спустя время долг у зелёной = 0
+    sess.entry_time = T0 - timedelta(hours=5)
+    await db.flush()
+    assert await amount_due(db, sess) == 0.0
+
+
+async def test_create_yellow_without_valid_until_rejected(client, db):
+    """API: жёлтая запись без срока «бесплатно до» отклоняется (P0-6)."""
+    from src.models import User, UserRole
+    from src.modules import auth
+
+    db.add(
+        User(
+            username="mgr",
+            password_hash=auth.hash_password("mgrpass1"),
+            role=UserRole.LIST_MANAGER,
+        )
+    )
+    await db.commit()
+    token = (
+        await client.post(
+            "/api/v1/auth/login", json={"username": "mgr", "password": "mgrpass1"}
+        )
+    ).json()["access_token"]
+    r = await client.post(
+        "/api/v1/access-entries",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"plate": "777YEL77", "list_type": "yellow"},
+    )
+    assert r.status_code == 422
+
+
 # ── CRUD-гварды + аудит + алерты API ────────────────────────────────────────
 
 

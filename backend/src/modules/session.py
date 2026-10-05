@@ -44,7 +44,7 @@ from src.models import (
     SessionStatus,
 )
 from src.modules.access import normalize_plate, record_alert, resolve_access
-from src.modules.tariff import get_active_tariff, tariff_price
+from src.modules.tariff import get_active_tariff, price_for_session
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
 logger = logging.getLogger(__name__)
@@ -504,32 +504,19 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
         )
         return SessionResult("event_without_session")
 
-    # Стоимость за фактическое время стоянки по активному тарифу (ТЗ §3.4)
+    # Фактическое время стоянки (клампим в ≥0 — сбитые часы камеры не должны
+    # давать отрицательную длительность).
     entry = _as_aware(active.entry_time)
     exit_at = _as_aware(event.event_time)
-    duration = None
     if entry is not None and exit_at is not None:
-        duration = int((exit_at - entry).total_seconds())
-        active.duration_seconds = duration
+        active.duration_seconds = max(0, int((exit_at - entry).total_seconds()))
     tariff = await get_active_tariff(session)
 
-    # Списки доступа (итерация 3): зелёный — бесплатно; жёлтый — бесплатно до
-    # free_until, далее тариф на «перебор»; остальные — как обычно.
-    if active.access_type == AccessType.GREEN:
-        price = 0.0
-        active.price = 0.0
-    elif active.access_type == AccessType.YELLOW:
-        free_until = _as_aware(active.free_until)
-        billable = 0
-        if exit_at is not None and free_until is not None and exit_at > free_until:
-            billable = int((exit_at - free_until).total_seconds())
-        price = tariff_price(billable, tariff) if tariff is not None else 0.0
-        if tariff is not None:
-            active.price = price
-    else:
-        price = tariff_price(duration, tariff) if duration is not None else 0.0
-        if tariff is not None and duration is not None:
-            active.price = price
+    # Цена — через единую price_for_session (зелёный/жёлтый/обычный + клампинг),
+    # ту же, что зовёт amount_due: расчёт при выезде и запрос долга совпадают.
+    price = price_for_session(active, tariff, event.event_time)
+    if tariff is not None or active.access_type == AccessType.GREEN:
+        active.price = price
     due = round(price - active.paid_amount, 2)
 
     # Автосписание Kaspi: пробуем списать долг с привязанной карты ДО отказа.

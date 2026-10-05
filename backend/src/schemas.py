@@ -1,9 +1,9 @@
 """Pydantic-схемы (валидация запросов и сериализация ответов)."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # --- Auth / Users ---
@@ -67,6 +67,21 @@ class AccessEntryCreate(BaseModel):
     valid_until: datetime | None = None  # жёлтый: бесплатно до этого момента
     note: str | None = Field(None, max_length=255)
     is_active: bool = True
+
+    @model_validator(mode="after")
+    def _yellow_requires_future_valid_until(self) -> "AccessEntryCreate":
+        # Жёлтый = «бесплатно до …». Без даты это молча превратилось бы в
+        # бесплатную парковку навсегда; с датой в прошлом — сразу платно, смысла
+        # в записи нет. Требуем будущий срок.
+        if self.list_type == "yellow":
+            if self.valid_until is None:
+                raise ValueError("для жёлтого списка обязателен срок «бесплатно до»")
+            until = self.valid_until
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            if until <= datetime.now(timezone.utc):
+                raise ValueError("срок «бесплатно до» должен быть в будущем")
+        return self
 
 
 class AccessEntryUpdate(BaseModel):

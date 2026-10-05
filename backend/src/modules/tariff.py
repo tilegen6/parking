@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import get_session
-from src.models import Tariff
+from src.models import AccessType, ParkingSession, Tariff
 from src.schemas import TariffCreate, TariffOut, TariffUpdate
 
 
@@ -56,6 +57,49 @@ def tariff_price(duration_seconds: int, tariff: Tariff | None) -> float:
         price_per_hour=tariff.price_per_hour,
         daily_cap=tariff.daily_cap,
     )
+
+
+def _aware(dt: datetime | None) -> datetime | None:
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def price_for_session(
+    parking: ParkingSession, tariff: Tariff | None, ref_time: datetime
+) -> float:
+    """Цена сессии на момент ref_time с учётом списка доступа (green/yellow).
+
+    ЕДИНАЯ точка расчёта — зовётся и при выезде (_handle_exit), и при запросе
+    долга (amount_due/Kaspi), иначе с бесплатных машин берут реальные деньги.
+
+    - GREEN — всегда бесплатно;
+    - YELLOW — бесплатно до free_until, далее тариф на «перебор»; но платное
+      время считаем от max(entry, free_until), а не от free_until: иначе
+      просроченный жёлтый пропуск (free_until в прошлом) даёт счёт за десятки
+      часов до въезда. YELLOW без free_until = обычная платная (не «бесплатно
+      навсегда»);
+    - иначе — обычный тариф за фактическую стоянку.
+
+    Длительность клампится в неотрицательную: сбитые часы камеры (event_time в
+    прошлом/будущем) не должны давать отрицательный счёт.
+    """
+    entry = _aware(parking.entry_time)
+    ref = _aware(ref_time)
+    if entry is None or ref is None:
+        return 0.0
+    duration = max(0, int((ref - entry).total_seconds()))
+
+    if parking.access_type == AccessType.GREEN:
+        return 0.0
+    if parking.access_type == AccessType.YELLOW:
+        free_until = _aware(parking.free_until)
+        if free_until is None:
+            return tariff_price(duration, tariff)
+        billable_start = max(entry, free_until)
+        billable = max(0, int((ref - billable_start).total_seconds()))
+        return tariff_price(billable, tariff)
+    return tariff_price(duration, tariff)
 
 
 async def get_active_tariff(session: AsyncSession) -> Tariff | None:

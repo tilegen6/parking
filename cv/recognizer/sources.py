@@ -287,7 +287,8 @@ class DemoSource:
         # от «далеко» (0.25 ширины кадра) до «у стрелы» (0.65)
         frac = 0.25 + 0.40 * max(0.0, min(1.0, progress))
         scale = (self.size[1] * frac) / pw
-        resized = cv2.resize(plate_img, (max(8, int(pw * scale)), max(4, int(ph * scale))))
+        new_w, new_h = max(8, int(pw * scale)), max(4, int(ph * scale))
+        resized = cv2.resize(plate_img, (new_w, new_h))
         rh, rw = resized.shape[:2]
         # чем ближе машина, тем ниже номер в кадре
         y = int((self.size[0] - rh) * (0.35 + 0.25 * progress))

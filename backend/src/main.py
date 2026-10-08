@@ -10,8 +10,19 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from src.config import settings
-from src.database import engine
-from src.modules import camera, recognition, session
+from src.database import async_session_factory, engine
+from src.modules import (
+    access,
+    auth,
+    camera,
+    gate,
+    kaspi,
+    payment,
+    recognition,
+    session,
+    tariff,
+    user,
+)
 from src.storage import storage
 
 logging.basicConfig(
@@ -29,6 +40,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         storage.ensure_bucket()
     except Exception as exc:  # noqa: BLE001
         logger.warning("MinIO недоступен при старте: %s", exc)
+    # Стартовый администратор при пустой БД (не падаем, если БД недоступна)
+    try:
+        async with async_session_factory() as s:
+            await auth.ensure_default_admin(s)
+            await s.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Не удалось создать стартового админа: %s", exc)
     yield
     await engine.dispose()
     logger.info("Остановка приложения")
@@ -72,7 +90,19 @@ async def health() -> dict[str, object]:
     return {"status": "ok" if db_ok else "degraded", "database": db_ok}
 
 
+app.include_router(auth.router)
+app.include_router(user.router)
 app.include_router(recognition.router)
 app.include_router(camera.router)
 app.include_router(camera.dashboard_router)
+app.include_router(gate.router)
+app.include_router(access.router)
 app.include_router(session.router)
+app.include_router(tariff.router)
+app.include_router(payment.router)
+
+# Внутренний DEBUG-эндпоинт теста автосписания (сам себя гасит при DEBUG=false)
+app.include_router(kaspi.debug_router)
+# Входящий онлайн-протокол Kaspi монтируем только если включён (защита IP-allowlist)
+if settings.kaspi_provider_enabled:
+    app.include_router(kaspi.router)

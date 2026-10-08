@@ -78,3 +78,33 @@ async def test_get_missing_returns_404(client):
 async def test_update_missing_returns_404(client):
     r = await client.put("/api/v1/tariffs/9999", json={"price_per_hour": 50})
     assert r.status_code == 404
+
+
+async def test_only_one_active_tariff_after_create(client):
+    """P1-6: создание активного тарифа гасит прочие — активный всегда один.
+
+    Раньше активными могли быть несколько: бэкенд брал последний по id, фронт —
+    первый, и показанная сумма расходилась с фактически выставленной.
+    """
+    first = (await client.post("/api/v1/tariffs", json=_tariff(name="Первый"))).json()
+    second = (await client.post("/api/v1/tariffs", json=_tariff(name="Второй"))).json()
+
+    rows = (await client.get("/api/v1/tariffs")).json()
+    active = [t for t in rows if t["is_active"]]
+    assert len(active) == 1, active
+    assert active[0]["id"] == second["id"]
+    assert not next(t for t in rows if t["id"] == first["id"])["is_active"]
+
+
+async def test_only_one_active_tariff_after_update(client):
+    """Включение старого тарифа снимает флаг с текущего активного."""
+    first = (await client.post("/api/v1/tariffs", json=_tariff(name="Первый"))).json()
+    (await client.post("/api/v1/tariffs", json=_tariff(name="Второй"))).json()
+
+    r = await client.put(f"/api/v1/tariffs/{first['id']}", json={"is_active": True})
+    assert r.status_code == 200
+
+    rows = (await client.get("/api/v1/tariffs")).json()
+    active = [t for t in rows if t["is_active"]]
+    assert len(active) == 1
+    assert active[0]["id"] == first["id"]

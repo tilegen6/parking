@@ -382,6 +382,17 @@ class Tariff(Base):
     """
 
     __tablename__ = "tariff"
+    __table_args__ = (
+        # Активным может быть только ОДИН тариф: иначе бэкенд берёт последний по
+        # id, фронт — первый, и показанная сумма расходится с выставленной.
+        Index(
+            "uq_tariff_single_active",
+            func.coalesce(text("is_active"), False),
+            unique=True,
+            postgresql_where=text("is_active"),
+            sqlite_where=text("is_active"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))

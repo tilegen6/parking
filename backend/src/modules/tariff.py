@@ -126,9 +126,27 @@ async def list_tariffs(session: SessionDep) -> list[TariffOut]:
     return [TariffOut.model_validate(t) for t in result.scalars().all()]
 
 
+async def _deactivate_other_tariffs(session: AsyncSession, keep_id: int | None) -> None:
+    """Активным может быть только один тариф — снимаем флаг с остальных.
+
+    Иначе бэкенд берёт последний по id, фронт — первый, и показанная сумма не
+    совпадает с фактически выставленной.
+    """
+    stmt = select(Tariff).where(Tariff.is_active.is_(True))
+    if keep_id is not None:
+        stmt = stmt.where(Tariff.id != keep_id)
+    for other in (await session.execute(stmt)).scalars().all():
+        other.is_active = False
+
+
 @router.post("/tariffs", response_model=TariffOut, status_code=201)
 async def create_tariff(payload: TariffCreate, session: SessionDep) -> TariffOut:
-    """Создать тариф."""
+    """Создать тариф. Если он активный — остальные деактивируются."""
+    # Снимаем флаг с прочих ДО вставки: иначе на миг активных двое и уникальный
+    # индекс отвергнет INSERT.
+    if payload.is_active:
+        await _deactivate_other_tariffs(session, None)
+        await session.flush()
     tariff = Tariff(**payload.model_dump())
     session.add(tariff)
     await session.flush()
@@ -153,7 +171,13 @@ async def update_tariff(
     tariff = await session.get(Tariff, tariff_id)
     if tariff is None:
         raise HTTPException(status_code=404, detail="Тариф не найден")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    # Если этот тариф становится (или остаётся) активным — сперва гасим прочие,
+    # иначе уникальный индекс «один активный» отвергнет UPDATE.
+    if data.get("is_active", tariff.is_active):
+        await _deactivate_other_tariffs(session, tariff.id)
+        await session.flush()
+    for field, value in data.items():
         setattr(tariff, field, value)
     await session.flush()
     await session.refresh(tariff)

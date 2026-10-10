@@ -51,65 +51,9 @@ class Settings(BaseSettings):
     recognition_min_confidence: float = 0.85
     # Окно дедупликации повторных событий одного номера, секунд
     session_dedup_window_seconds: int = 30
-    # Серия дублей ENTRY (машина стоит перед шлагбаумом): пока события идут не
-    # реже этого окна, старт сессии сдвигается на последнее из них. Вне окна —
-    # повторное распознавание давно стоящей машины, счёт не обнуляем.
-    entry_restart_window_seconds: int = 600
-    # ТС-3: новый ENTRY при активной сессии позже этого срока = пропущенный
-    # выезд. Старую сессию закрываем как auto_closed, открываем новую.
-    reentry_new_session_seconds: int = 3600
-    # ТС-8: активная сессия старше этого срока помечается «зависшей» (stale)
-    session_stale_after_hours: int = 24
-
-    # --- Auth / JWT ---
-    # Секрет подписи JWT. В проде — задать через env; дефолт только для dev/CI.
-    jwt_secret_key: str = "dev-insecure-change-me"
-    jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 720  # 12 часов
-    # Стартовый администратор — создаётся при пустой таблице пользователей.
-    default_admin_username: str = "admin"
-    default_admin_password: str = "admin"
 
     # --- CORS ---
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
-
-    # --- Payments: активный провайдер оплаты ---
-    # mock  — заглушка (оплата подтверждается webhook'ом из Студии, дефолт для dev/CI)
-    # kaspi — реальный провайдер Kaspi.kz (онлайн-протокол, см. modules/kaspi.py)
-    payment_provider: str = "mock"
-
-    # --- Kaspi: онлайн-протокол провайдера (входящий, Kaspi -> нас) ---
-    # Kaspi дёргает наш GET /api/kaspi/pay (command=check|pay). Монтируется только
-    # при включённом флаге; защита — IP-allowlist (+ опц. Basic Auth).
-    kaspi_provider_enabled: bool = False
-    # Подсети Kaspi, с которых приходят запросы (Протокол взаимодействия, п.1)
-    kaspi_allowed_ips: str = (
-        "194.187.247.152,194.187.245.108,197.187.244.108,194.187.244.108"
-    )
-    # Опциональная Basic Auth поверх IP-allowlist (пусто = не проверяем)
-    kaspi_provider_username: str = ""
-    kaspi_provider_password: str = ""
-    # Формат ответа Kaspi: xml (основной по спецификации) | json
-    kaspi_provider_response_format: str = "xml"
-    # Шаблон QR/deeplink для pay_url провайдера ({account} = номер авто). Пусто —
-    # pay_url не формируется (оплата инициируется в приложении Kaspi).
-    kaspi_pay_deeplink_template: str = ""
-
-    # --- Kaspi: AutomaticPayments (исходящий, мы -> autopayments.kaspi.kz) ---
-    # Автосписание с привязанной карты при въезде/выезде. Basic Auth.
-    kaspi_autopay_enabled: bool = False
-    kaspi_autopay_base_url: str = "https://autopayments.kaspi.kz"
-    kaspi_autopay_username: str = ""
-    kaspi_autopay_password: str = ""
-    # ID парковки в системе Kaspi + бесплатное время (сек), передаётся в enter
-    kaspi_parking_id: int = 1
-    kaspi_free_time_seconds: int = 0
-    # Таймаут запроса к Kaspi (ТЗ: ответ провайдера ≤ 15 c)
-    kaspi_http_timeout_seconds: float = 15.0
-
-    # --- CV-сервис (распознавание живого потока) ---
-    # Внутри docker-сети — по имени сервиса; локально — http://localhost:8090
-    cv_service_url: str = "http://cv:8090"
 
     @property
     def database_url(self) -> str:
@@ -136,10 +80,6 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
-
-    @property
-    def kaspi_allowed_ips_list(self) -> list[str]:
-        return [ip.strip() for ip in self.kaspi_allowed_ips.split(",") if ip.strip()]
 
 
 @lru_cache

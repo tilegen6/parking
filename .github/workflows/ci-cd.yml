@@ -315,4 +315,7 @@ jobs:
             COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile backup"
             $COMPOSE pull
             $COMPOSE up -d
+            # nginx кэширует IP апстримов с момента старта; после пересоздания
+            # backend/frontend перезапускаем его, иначе ловим 502 (stale upstream).
+            $COMPOSE restart nginx
             docker image prune -f

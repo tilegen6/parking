@@ -16,11 +16,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-try:
-    import cv2
-except ImportError:  # pragma: no cover — окружения без opencv
-    cv2 = None  # type: ignore[assignment]
-
 # Готовая pretrained-модель детекции номеров (YOLOv8). Авто-скачивается при первом
 # использовании. Позже заменяется дообученной на казахстанских номерах (Roboflow/CVAT).
 PLATE_MODEL_URL = (
@@ -42,64 +37,6 @@ class PlateDetector(ABC):
 class WholeFrameDetector(PlateDetector):
     def detect(self, frame: np.ndarray) -> list[Region]:
         return [Region(frame, None)]
-
-
-class SyntheticPlateDetector(PlateDetector):
-    """Детектор номерной плашки для СТЕНДА (демо-поток, тесты).
-
-    Боевые ONNX-модели обучены на фотографиях машин и синтетический рендер не
-    находят — на демо-потоке они не дают ни одного бокса. А без бокса нельзя
-    проверить ни зону у шлагбаума, ни приближение машины, то есть весь сценарий
-    открытия остаётся непроверяемым без выезда на объект.
-
-    Здесь честный (пусть и простой) CV: плашка — тёмный прямоугольник на светлом
-    фоне, ищем её по контурам. Для реальных кадров не предназначен.
-    """
-
-    def __init__(
-        self,
-        min_area_ratio: float = 0.001,
-        glyph_max: int = 128,
-        pad: float = 0.06,
-    ) -> None:
-        if cv2 is None:
-            raise RuntimeError("SyntheticPlateDetector требует opencv-python (cv2)")
-        self.min_area_ratio = min_area_ratio
-        self.glyph_max = glyph_max  # темнее этого — считаем глифом
-        self.pad = pad
-
-    def detect(self, frame: np.ndarray) -> list[Region]:
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
-        h, w = gray.shape[:2]
-        # Ищем не саму плашку (она светлая, как и фон), а БЛОК ТЁМНЫХ ГЛИФОВ:
-        # символы номера. Широкое горизонтальное закрытие сливает буквы в один
-        # прямоугольник — это классический приём поиска текстовых блоков.
-        mask = (gray < self.glyph_max).astype(np.uint8) * 255
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (31, 7))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        regions: list[Region] = []
-        min_area = self.min_area_ratio * h * w
-        for c in contours:
-            x, y, cw, ch = cv2.boundingRect(c)
-            if cw * ch < min_area or ch == 0:
-                continue
-            # Номер — вытянутый прямоугольник. Верхняя граница щедрая: контур
-            # обнимает строку глифов (без полей плашки), и у мелкого дальнего
-            # номера отношение доходит до ~11.
-            if not (1.5 <= cw / ch <= 14.0):
-                continue
-            # немного расширяем: контур обнимает глифы, а OCR нужен весь знак
-            dx, dy = int(cw * self.pad), int(ch * 0.25)
-            x1, y1 = max(0, x - dx), max(0, y - dy)
-            x2, y2 = min(w, x + cw + dx), min(h, y + ch + dy)
-            crop = frame[y1:y2, x1:x2]
-            if crop.size:
-                regions.append(Region(crop, (x1, y1, x2, y2)))
-        # самые крупные первыми: ближняя машина важнее дальней
-        regions.sort(key=lambda r: -((r.box[2] - r.box[0]) * (r.box[3] - r.box[1])))
-        return regions[:5]
 
 
 def default_model_path() -> str:
@@ -178,8 +115,6 @@ class OpenImagePlateDetector(PlateDetector):
         self,
         detection_model: str = "yolo-v9-t-640-license-plate-end2end",
         conf: float = 0.25,
-        pad_x: float = 0.06,
-        pad_y: float = 0.14,
     ) -> None:
         from .util import ensure_ssl_certs
 
@@ -191,11 +126,6 @@ class OpenImagePlateDetector(PlateDetector):
                 "open-image-models не установлен. "
                 '`pip install "open-image-models[onnx]"`'
             ) from e
-        # Детектор даёт tight-бокс впритык к номеру — крайние символы срезаются по
-        # краю кропа, и OCR теряет первый/последний знак. Немного расширяем (у
-        # YoloPlateDetector такой запас уже был, здесь его не было).
-        self.pad_x = pad_x
-        self.pad_y = pad_y
         self._det = LicensePlateDetector(
             detection_model=detection_model,  # type: ignore[arg-type]
             conf_thresh=conf,
@@ -206,13 +136,8 @@ class OpenImagePlateDetector(PlateDetector):
         regions: list[Region] = []
         for d in self._det.predict(frame):
             bb = d.bounding_box
-            bw = max(0.0, float(bb.x2) - float(bb.x1))
-            bh = max(0.0, float(bb.y2) - float(bb.y1))
-            dx, dy = bw * self.pad_x, bh * self.pad_y
-            x1 = max(0, int(bb.x1 - dx))
-            y1 = max(0, int(bb.y1 - dy))
-            x2 = min(w, int(bb.x2 + dx))
-            y2 = min(h, int(bb.y2 + dy))
+            x1, y1 = max(0, int(bb.x1)), max(0, int(bb.y1))
+            x2, y2 = min(w, int(bb.x2)), min(h, int(bb.y2))
             crop = frame[y1:y2, x1:x2]
             if crop.size:
                 regions.append(Region(crop, (x1, y1, x2, y2)))

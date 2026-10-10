@@ -10,5 +10,8 @@ repos:
     rev: v4.5.0
     hooks:
       - id: check-yaml
+        # docker-compose.prod.yml использует валидные для Compose кастомные теги
+        # (!override / !reset), которые стандартный YAML-парсер check-yaml не грузит.
+        exclude: ^docker-compose\.prod\.yml$
       - id: end-of-file-fixer
       - id: trailing-whitespace

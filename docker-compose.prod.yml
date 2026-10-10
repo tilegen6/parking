@@ -1,0 +1,98 @@
+# Продакшн-оверлей к docker-compose.yml. Применять ВМЕСТЕ с базовым файлом:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile backup up -d
+#
+# Отличия от тестового стека (docker-compose.yml):
+#   * backend/frontend берутся готовыми образами из GHCR (не собираются на сервере);
+#   * наружу торчит ТОЛЬКО edge-nginx (80/443) с TLS Let's Encrypt;
+#     внутренние порты (Postgres/Redis/MinIO/backend/frontend) больше не публикуются;
+#   * добавлены сервисы nginx (reverse-proxy + HTTPS) и certbot (выпуск/продление).
+#
+# Обязательные переменные в .env на сервере:
+#   IMAGE_TAG — тег образов GHCR (напр. sha-<full-sha> из CI, либо latest)
+#   DOMAIN    — публичный домен (для сертификата и server_name)
+# Плюс прод-значения: APP_ENV=production, DEBUG=false, CORS_ORIGINS=https://<домен>,
+# SERVICE_URL=https://<домен>, реальные пароли (POSTGRES/MINIO/GRAFANA).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  # ── Внутренние сервисы: убираем публикацию портов наружу ──────────
+  postgres:
+    ports: !override []
+
+  redis:
+    ports: !override []
+
+  minio:
+    ports: !override []
+
+  backend:
+    # Готовый образ из GHCR вместо локальной сборки
+    image: ghcr.io/codeanpr/smart-parking-backend:${IMAGE_TAG:-latest}
+    build: !reset null
+    ports: !override []
+    environment:
+      APP_ENV: production
+      DEBUG: "false"
+
+  frontend:
+    image: ghcr.io/codeanpr/smart-parking-frontend:${IMAGE_TAG:-latest}
+    build: !reset null
+    ports: !override []
+    # healthcheck из образа стучится на localhost → он резолвится в IPv6 (::1),
+    # а nginx слушает только IPv4 → проверка падает. Переопределяем на 127.0.0.1.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Edge reverse-proxy + TLS (единственный публичный сервис) ──────
+  nginx:
+    image: nginx:alpine
+    container_name: parking_nginx
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Подставляется в nginx.conf.template через envsubst при старте
+      DOMAIN: ${DOMAIN:?DOMAIN не задан в .env (нужен для TLS/сертификата)}
+    volumes:
+      - ./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - letsencrypt:/etc/letsencrypt:ro
+      - acme_webroot:/var/www/certbot
+    # Команда — дефолтная (образ сам рендерит шаблон через envsubst и стартует nginx).
+    # Обновлённые сертификаты подхватываются при `nginx -s reload` — см. deploy/DEPLOY.md
+    # (ночной cron reload) или при следующем деплое, который пересоздаёт контейнер.
+
+  # ── Certbot: продление сертификатов (первичный выпуск — вручную) ──
+  certbot:
+    image: certbot/certbot:latest
+    container_name: parking_certbot
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - acme_webroot:/var/www/certbot
+    entrypoint: >
+      /bin/sh -c "trap exit TERM; while :; do
+                    certbot renew --webroot -w /var/www/certbot --quiet;
+                    sleep 12h & wait $${!};
+                  done"
+
+volumes:
+  letsencrypt:
+  acme_webroot:

@@ -89,11 +89,6 @@ DETECTORS: dict[str, dict] = {
         "desc": "OCR по всему кадру — для синтетики/готовых кропов",
         "pkg": None,
     },
-    "synthetic": {
-        "label": "Демо-стенд (по контуру)",
-        "desc": "находит плашку на синтетике — для имитации проездов без камеры",
-        "pkg": None,
-    },
 }
 ENGINES: dict[str, dict] = {
     "fastplate": {
@@ -261,9 +256,6 @@ class StreamManager:
                     "direction": rec.get("direction"),
                     "confidence": rec.get("confidence"),
                     "flag": rec.get("flag"),
-                    # open — сигнал шлагбауму (машина ещё перед стрелой),
-                    # observe — только учёт (уверенности не хватило / трек закрыт)
-                    "decision": rec.get("decision", "observe"),
                     "backend_action": br.get("session_action"),
                     "backend_error": rec.get("backend_error"),
                     "time": rec.get("event_time"),
@@ -332,17 +324,7 @@ class StreamManager:
                     "running": h.running,
                     "error": h.error,
                     "frames": h.sp.frames_seen,
-                    # отсеяно фильтром качества — растёт при плохом освещении/смазе
-                    "frames_dropped": getattr(h.sp, "frames_dropped", 0),
                     "events": h.sp.events_emitted,
-                    # сигналов «открыть шлагбаум» (машина была перед стрелой)
-                    "opens": getattr(h.sp, "opens_emitted", 0),
-                    # треков, по которым решение так и не приняли → нужен оператор
-                    "stalled": getattr(h.sp, "stalled", 0),
-                    # почему НЕ открыли последний раз: stale_hit / few_votes /
-                    # no_agreement / low_confidence / never_grew / leaving / ...
-                    "last_reason": getattr(h.sp, "last_reason", ""),
-                    "tracks_active": len(getattr(h.sp, "_tracks", {})),
                     "last_plate": h.sp.last_plate,
                     "opened": getattr(src, "opened", None),
                     "reconnects": getattr(src, "reconnects", None),
@@ -518,12 +500,6 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
         if req.direction not in ("entry", "exit"):
             raise HTTPException(400, "direction: entry | exit")
         eng, det = resolve(req.version, req.engine, req.detector)
-        # Демо-стенд: боевые ONNX-детекторы синтетику не находят и не дают бокс,
-        # а без бокса не проверить ни зону, ни приближение — сценарий открытия
-        # шлагбаума стал бы непроверяемым. Подставляем контурный детектор, если
-        # оператор явно не выбрал другой.
-        if req.url == "demo" and req.detector is None:
-            eng, det = "template", "synthetic"
         try:
             return stream_mgr.start(req, eng, det)
         except RuntimeError as e:  # движок/детектор не установлен / нет cv2

@@ -1,0 +1,177 @@
+[
+  {
+    "name": "наш аналог",
+    "detector": "yolo-v9-t-640-license-plate-end2end",
+    "ocr": "global-plates-mobile-vit-v2-model",
+    "total": 25,
+    "found": 25,
+    "exact": 22,
+    "exact_pct": 88.0,
+    "detect_pct": 100.0,
+    "char_pct": 98.28571428571429,
+    "ms_avg": 33.248693314380944,
+    "misses": [
+      [
+        "eu5.jpg",
+        "OYO9FEU",
+        "OY09FEU"
+      ],
+      [
+        "eu7.jpg",
+        "VW4X4WP",
+        "VW444WP"
+      ],
+      [
+        "test_006.jpg",
+        "RKO99AN",
+        "RK099AN"
+      ]
+    ]
+  },
+  {
+    "name": "дефолт fast-alpr",
+    "detector": "yolo-v9-t-384-license-plate-end2end",
+    "ocr": "global-plates-mobile-vit-v2-model",
+    "total": 25,
+    "found": 25,
+    "exact": 22,
+    "exact_pct": 88.0,
+    "detect_pct": 100.0,
+    "char_pct": 98.28571428571429,
+    "ms_avg": 15.997054907493293,
+    "misses": [
+      [
+        "eu5.jpg",
+        "OYO9FEU",
+        "OY09FEU"
+      ],
+      [
+        "eu7.jpg",
+        "VW4X4WP",
+        "VW444WP"
+      ],
+      [
+        "test_006.jpg",
+        "RKO99AN",
+        "RK099AN"
+      ]
+    ]
+  },
+  {
+    "name": "крупный детектор",
+    "detector": "yolo-v9-s-608-license-plate-end2end",
+    "ocr": "global-plates-mobile-vit-v2-model",
+    "total": 25,
+    "found": 25,
+    "exact": 22,
+    "exact_pct": 88.0,
+    "detect_pct": 100.0,
+    "char_pct": 98.28571428571429,
+    "ms_avg": 52.38021987024695,
+    "misses": [
+      [
+        "eu5.jpg",
+        "OYO9FEU",
+        "OY09FEU"
+      ],
+      [
+        "eu7.jpg",
+        "VW4X4WP",
+        "VW444WP"
+      ],
+      [
+        "test_006.jpg",
+        "RKO99AN",
+        "RK099AN"
+      ]
+    ]
+  },
+  {
+    "name": "европейский OCR",
+    "detector": "yolo-v9-s-608-license-plate-end2end",
+    "ocr": "european-plates-mobile-vit-v2-model",
+    "total": 25,
+    "found": 25,
+    "exact": 19,
+    "exact_pct": 76.0,
+    "detect_pct": 100.0,
+    "char_pct": 95.30952380952381,
+    "ms_avg": 51.88859658781439,
+    "misses": [
+      [
+        "eu2.jpg",
+        "GWAGEN",
+        "GWAAGN"
+      ],
+      [
+        "eu5.jpg",
+        "OYO9FEU",
+        "OY09FEU"
+      ],
+      [
+        "eu6.jpg",
+        "WOBVWMK4",
+        "WOBVWM14"
+      ],
+      [
+        "eu7.jpg",
+        "VW4X4WP",
+        "VW444WP"
+      ],
+      [
+        "eu8.jpg",
+        "WSQ3021",
+        "MSO3021"
+      ],
+      [
+        "test_006.jpg",
+        "RKO99AN",
+        "RK099AN"
+      ]
+    ]
+  },
+  {
+    "name": "евро OCR + t-640",
+    "detector": "yolo-v9-t-640-license-plate-end2end",
+    "ocr": "european-plates-mobile-vit-v2-model",
+    "total": 25,
+    "found": 25,
+    "exact": 19,
+    "exact_pct": 76.0,
+    "detect_pct": 100.0,
+    "char_pct": 94.73809523809524,
+    "ms_avg": 32.73264836985618,
+    "misses": [
+      [
+        "eu2.jpg",
+        "GWAGEN",
+        "GWAAGN"
+      ],
+      [
+        "eu5.jpg",
+        "OYO9FEU",
+        "OY09FEU"
+      ],
+      [
+        "eu6.jpg",
+        "WOBVWMK4",
+        "WOBVWM14"
+      ],
+      [
+        "eu7.jpg",
+        "VW4X4WP",
+        "VW444WP"
+      ],
+      [
+        "eu8.jpg",
+        "WSQ3021",
+        "MSO302"
+      ],
+      [
+        "test_006.jpg",
+        "RKO99AN",
+        "RK099AN"
+      ]
+    ]
+  }
+]

@@ -273,28 +273,14 @@ class DemoSource:
         # (пустой кадр = «нет номера»)
         return np.full((h, w, 3), 235, dtype=np.uint8)
 
-    def _scene(self, plate_img: np.ndarray, progress: float = 1.0) -> np.ndarray:
-        """Кадр «подъезжающей» машины.
-
-        `progress` 0→1 — насколько машина близко: номер РАСТЁТ в кадре и слегка
-        опускается, как при реальном подъезде к стреле. Это принципиально для
-        стенда: логика шлагбаума открывает только тем, кто приближается (иначе
-        номер на плакате или припаркованная в фоне машина открывали бы её), и на
-        статичной картинке проверить сценарий открытия было бы нельзя.
-        """
+    def _scene(self, plate_img: np.ndarray) -> np.ndarray:
         canvas = self._canvas()
         ph, pw = plate_img.shape[:2]
-        # от «далеко» (0.25 ширины кадра) до «у стрелы» (0.65)
-        frac = 0.25 + 0.40 * max(0.0, min(1.0, progress))
-        scale = (self.size[1] * frac) / pw
-        new_w, new_h = max(8, int(pw * scale)), max(4, int(ph * scale))
-        resized = cv2.resize(plate_img, (new_w, new_h))
+        scale = min((self.size[1] * 0.6) / pw, (self.size[0] * 0.3) / ph, 3.0)
+        resized = cv2.resize(plate_img, (int(pw * scale), int(ph * scale)))
         rh, rw = resized.shape[:2]
-        # чем ближе машина, тем ниже номер в кадре
-        y = int((self.size[0] - rh) * (0.35 + 0.25 * progress))
+        y = (self.size[0] - rh) // 2
         x = (self.size[1] - rw) // 2
-        y = max(0, min(self.size[0] - rh, y))
-        x = max(0, min(self.size[1] - rw, x))
         canvas[y : y + rh, x : x + rw] = resized
         return canvas
 
@@ -306,16 +292,13 @@ class DemoSource:
         idx = 0
         while not self._stop:
             plate = synth.random_kz_plate(self._rng)
-            rendered = synth.render_plate(plate)
-            for i in range(self.dwell):
+            scene = self._scene(synth.render_plate(plate))
+            for _ in range(self.dwell):
                 if self._stop:
                     return
                 idx += 1
                 self.status.frames_read = idx
-                # машина подъезжает: номер растёт от кадра к кадру
-                progress = i / max(1, self.dwell - 1)
-                scene = self._scene(rendered, progress)
-                yield Frame(scene, idx, datetime.now(timezone.utc), self.name)
+                yield Frame(scene.copy(), idx, datetime.now(timezone.utc), self.name)
                 time.sleep(interval)
             for _ in range(self.gap):
                 if self._stop:

@@ -1,11 +1,24 @@
 // TanStack Query хуки для данных backend.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  AuditEntry,
+  AuthUser,
+  UserCreateInput,
+  UserUpdateInput,
+} from "./auth";
 import { api, buildQuery } from "./client";
 import type {
+  AccessEntry,
+  AccessEntryInput,
+  Alert,
   BillingStats,
   Camera,
+  CameraCheckResult,
+  CameraInput,
   DashboardStats,
+  Gate,
+  GateInput,
   EventsFilters,
   KaspiInfo,
   KaspiPayResponse,
@@ -85,9 +98,174 @@ export function useSession(id: number) {
 export function useCreateCamera() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: Partial<Camera>) =>
+    mutationFn: (payload: CameraInput) =>
       api.post<Camera>("/api/v1/cameras", payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+export function useDeleteCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/cameras/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+/** Проверка связи с камерой: TCP-проба порта, обновляет статус online/offline. */
+export function useCheckCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      api.post<CameraCheckResult>(`/api/v1/cameras/${id}/check`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+/**
+ * Запуск/остановка распознавания потока камеры в CV.
+ * URL с паролем собирает бэкенд — в браузер пароль не попадает.
+ */
+export function useCameraStream() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; action: "start" | "stop" }) =>
+      api.post<Record<string, unknown>>(
+        `/api/v1/cameras/${args.id}/stream/${args.action}`,
+        {},
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Пользователи и аудит (admin)
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ["users"],
+    queryFn: () => api.get<AuthUser[]>("/api/v1/users"),
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UserCreateInput) =>
+      api.post<AuthUser>("/api/v1/users", payload),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: UserUpdateInput }) =>
+      api.put<AuthUser>(`/api/v1/users/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+export function useAuditLog() {
+  return useQuery({
+    queryKey: ["audit-log"],
+    queryFn: () => api.get<AuditEntry[]>("/api/v1/audit-log"),
+    refetchInterval: 10000,
+  });
+}
+
+export function useUpdateCamera() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: CameraInput }) =>
+      api.put<Camera>(`/api/v1/cameras/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["cameras"] }),
+  });
+}
+
+// Шлагбаумы/зоны
+
+export function useGates() {
+  return useQuery({
+    queryKey: ["gates"],
+    queryFn: () => api.get<Gate[]>("/api/v1/gates"),
+  });
+}
+
+export function useCreateGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GateInput) => api.post<Gate>("/api/v1/gates", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+export function useUpdateGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<GateInput> }) =>
+      api.put<Gate>(`/api/v1/gates/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+export function useDeleteGate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/gates/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gates"] }),
+  });
+}
+
+// Списки доступа (green/yellow/red)
+
+export function useAccessEntries() {
+  return useQuery({
+    queryKey: ["access-entries"],
+    queryFn: () => api.get<AccessEntry[]>("/api/v1/access-entries"),
+  });
+}
+
+export function useCreateAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: AccessEntryInput) =>
+      api.post<AccessEntry>("/api/v1/access-entries", payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+export function useUpdateAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: number; patch: Partial<AccessEntryInput> }) =>
+      api.put<AccessEntry>(`/api/v1/access-entries/${args.id}`, args.patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+export function useDeleteAccessEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.del(`/api/v1/access-entries/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["access-entries"] }),
+  });
+}
+
+// Оповещения (красный список)
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["alerts"],
+    queryFn: () => api.get<Alert[]>("/api/v1/alerts?only_new=true"),
+    refetchInterval: 8000,
+  });
+}
+
+export function useAckAlert() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.post<Alert>(`/api/v1/alerts/${id}/ack`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alerts"] }),
   });
 }
 
@@ -162,6 +340,37 @@ export function useConfirmPaymentMock() {
       api.post<Payment>("/api/v1/payments/webhook", {
         provider_payment_id: providerPaymentId,
       }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+// ТС-7: оператор вручную назначает направление событию UNKNOWN
+export function useAssignDirection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      eventId,
+      direction,
+    }: {
+      eventId: number;
+      direction: "ENTRY" | "EXIT";
+    }) =>
+      api.post<{
+        id: number;
+        direction: string;
+        session_action: string;
+        session_id: number | null;
+      }>(`/api/v1/recognition/events/${eventId}/direction`, { direction }),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
+// ТС-8: ручная отмена зависшей/ошибочной сессии
+export function useCancelSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: number) =>
+      api.post<ParkingSession>(`/api/v1/parking-sessions/${sessionId}/cancel`, {}),
     onSuccess: () => qc.invalidateQueries(),
   });
 }

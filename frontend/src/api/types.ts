@@ -2,6 +2,14 @@
 
 export type Direction = "ENTRY" | "EXIT" | "UNKNOWN";
 
+// Флаг аномалии — событие в очереди ручной проверки
+export type EventFlag =
+  | "low_confidence"
+  | "duplicate"
+  | "event_without_session"
+  | "unknown_direction"
+  | "possible_misread";
+
 export interface RecognitionEvent {
   id: number;
   plate_number: string | null;
@@ -12,6 +20,7 @@ export interface RecognitionEvent {
   camera_name: string | null;
   vehicle_photo_url: string | null;
   plate_photo_url: string | null;
+  flag: EventFlag | null;
   created_at: string;
 }
 
@@ -30,6 +39,93 @@ export interface Camera {
   type: string | null;
   location: string | null;
   status: string;
+  gate_id: number | null;
+  /** Какое направление снимает камера — для RTSP это единственный источник. */
+  direction: "entry" | "exit" | null;
+  username: string | null;
+  rtsp_port: number;
+  stream_path: string | null;
+  stream_url: string | null;
+  last_seen_at: string | null;
+  created_at: string;
+  /** Пароль наружу не отдаётся — только признак и URL с маской. */
+  has_password: boolean;
+  stream_url_display: string | null;
+}
+
+/** Поля, которые форма отправляет на бэкенд (пароль — только на запись). */
+export interface CameraInput {
+  name?: string;
+  ip_address?: string | null;
+  type?: string | null;
+  location?: string | null;
+  gate_id?: number | null;
+  direction?: "entry" | "exit" | null;
+  username?: string | null;
+  password?: string | null;
+  rtsp_port?: number;
+  stream_path?: string | null;
+  stream_url?: string | null;
+}
+
+export interface CameraCheckResult {
+  camera_id: number;
+  reachable: boolean;
+  status: string;
+  target: string | null;
+  detail: string | null;
+}
+
+// Шлагбаумы/зоны
+export interface Gate {
+  id: number;
+  name: string;
+  zone: string | null;
+  level: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GateInput {
+  name: string;
+  zone?: string | null;
+  level?: number;
+  is_active?: boolean;
+}
+
+// Списки доступа
+export type AccessListType = "green" | "yellow" | "red";
+
+export interface AccessEntry {
+  id: number;
+  plate: string;
+  list_type: AccessListType;
+  gate_id: number | null; // null = на все шлагбаумы
+  valid_until: string | null; // жёлтый: бесплатно до этого момента
+  note: string | null;
+  is_active: boolean;
+  created_by_username: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccessEntryInput {
+  plate: string;
+  list_type: AccessListType;
+  gate_id?: number | null;
+  valid_until?: string | null;
+  note?: string | null;
+  is_active?: boolean;
+}
+
+export interface Alert {
+  id: number;
+  kind: string;
+  plate: string | null;
+  gate_id: number | null;
+  message: string | null;
+  acknowledged: boolean;
   created_at: string;
 }
 
@@ -50,6 +146,8 @@ export interface EventsFilters {
   plate?: string;
   direction?: Direction | "";
   camera_id?: number;
+  // Очередь ручной проверки: "any" — все с флагом, либо конкретный флаг
+  flag?: EventFlag | "any" | "";
   date_from?: string;
   date_to?: string;
 }
@@ -61,7 +159,8 @@ export type SessionStatus =
   | "paid"
   | "unpaid"
   | "cancelled"
-  | "whitelist";
+  | "whitelist"
+  | "auto_closed";
 
 export interface ParkingSession {
   id: number;
@@ -75,6 +174,16 @@ export interface ParkingSession {
   parked_seconds: number | null;
   price: number | null;
   paid_amount: number;
+  // Старт сдвигался на последний дубль у шлагбаума (ТС-2)
+  entry_adjusted: boolean;
+  // Активная дольше порога (24ч) — «зависла», ручной разбор (ТС-8)
+  is_stale: boolean;
+  // Шлагбаум/зона сессии (null = не привязана)
+  gate_id: number | null;
+  // Способ проезда по спискам: green (бесплатно) / yellow (бесплатно до
+  // free_until) / null (обычная платная)
+  access_type: "green" | "yellow" | null;
+  free_until: string | null;
   entry_event_id: number | null;
   exit_event_id: number | null;
   entry_camera_id: number | null;
@@ -96,6 +205,7 @@ export interface SessionsFilters {
   limit?: number;
   plate?: string;
   status?: SessionStatus | "";
+  gate_id?: number;
   date_from?: string;
   date_to?: string;
 }

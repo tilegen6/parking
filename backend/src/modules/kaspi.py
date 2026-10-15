@@ -6,7 +6,7 @@ Kaspi дёргает единый эндпоинт GET /api/kaspi/pay с пар�
     сессия и на какую сумму. Возвращаем result=0 + sum, либо result=1.
   * command=pay   — оплата: кредитуем сессию, создаём Payment(provider=kaspi),
     возвращаем result=0 + prv_txn (id нашего платежа). Идемпотентно по txn_id
-    (повтор с тем же txn_id → result=3, без двойного списания; Протокол §7).
+    (повтор с тем же txn_id → тот же result=0, без двойного списания; Протокол §7).
 
 Ответ — XML (по спецификации) или JSON, коды result 0/1/2/3/4/5 (Протокол §9).
 Доступ ограничен IP-allowlist Kaspi (см. core.security.verify_kaspi_source).
@@ -148,10 +148,12 @@ async def _handle_pay(
         .first()
     )
     if existing is not None:
+        # Протокол §7: на повтор с тем же txn_id возвращаем РЕЗУЛЬТАТ предыдущего
+        # запроса. Запись существует только для успешной оплаты → result=0.
         return _render(
             {
                 "txn_id": txn_id,
-                "result": KaspiResult.ALREADY_PAID,
+                "result": KaspiResult.OK,
                 "prv_txn": existing.id,
                 "sum": _fmt_sum(existing.amount),
             },
@@ -201,10 +203,11 @@ async def _handle_pay(
         )
         prv = existing.id if existing else txn_id
         amt = existing.amount if existing else amount
+        # Протокол §7: возвращаем результат предыдущего (успешного) запроса — result=0
         return _render(
             {
                 "txn_id": txn_id,
-                "result": KaspiResult.ALREADY_PAID,
+                "result": KaspiResult.OK,
                 "prv_txn": prv,
                 "sum": _fmt_sum(amt),
             },

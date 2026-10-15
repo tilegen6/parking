@@ -116,7 +116,9 @@ async def test_pay_is_idempotent_by_txn_id(client, db, monkeypatch):
     first = (await client.get("/api/kaspi/pay", params=params)).json()
     second = (await client.get("/api/kaspi/pay", params=params)).json()
     assert first["result"] == 0
-    assert second["result"] == 3  # уже оплачено — без двойного списания
+    # Протокол §7: повтор с тем же txn_id → тот же результат (0), без двойного списания
+    assert second["result"] == 0
+    assert second["prv_txn_id"] == first["prv_txn_id"]
     # Только один платёж и одно списание в сессию
     payments = (
         await db.execute(select(func.count()).select_from(Payment))

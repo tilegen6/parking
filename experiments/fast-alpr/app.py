@@ -14,6 +14,7 @@ import base64
 import io
 import logging
 import os
+import sys
 import time
 
 import cv2
@@ -27,7 +28,12 @@ from fastapi.staticfiles import StaticFiles
 ort.set_default_logger_severity(3)
 logging.getLogger("open_image_models").setLevel(logging.ERROR)
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cv"))
+
 from fast_alpr import ALPR  # noqa: E402
+from fast_plate_ocr import ONNXPlateRecognizer  # noqa: E402
+from open_image_models import LicensePlateDetector  # noqa: E402
+from recognizer.kz_format import normalize_kz  # noqa: E402
 
 CPU_ONLY = ["CPUExecutionProvider"]
 
@@ -44,12 +50,30 @@ OCRS = [
 ]
 
 app = FastAPI(title="fast-alpr sandbox")
+_raw_cache: dict[tuple[str, str], tuple] = {}
+
+
+def get_raw(detector: str, ocr: str) -> tuple:
+    """Прямая пара моделей — нужна ради посимвольной уверенности."""
+    key = (detector, ocr)
+    if key not in _raw_cache:
+        _raw_cache[key] = (
+            LicensePlateDetector(detection_model=detector, providers=CPU_ONLY),
+            ONNXPlateRecognizer(hub_ocr_model=ocr, providers=CPU_ONLY, device="cpu"),
+        )
+    return _raw_cache[key]
 
 # Готовые фото из репозитория — чтобы проверить стенд, не ища файлы на диске.
-_SAMPLES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "cv", "datasets", "openalpr_eu")
+_SAMPLES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kz_photos")
 if os.path.isdir(_SAMPLES_DIR):
     app.mount("/samples", StaticFiles(directory=_SAMPLES_DIR), name="samples")
-SAMPLES = ["eu8.jpg", "test_006.jpg", "eu5.jpg", "eu7.jpg"]
+# Реальные казахстанские фото: классический, новый формат, старый советский.
+SAMPLES = [
+    "photo_2026-09-04 02.27.22.jpeg",   # 040 BS 01  — классический короткий
+    "photo_2026-09-04 02.27.21.jpeg",   # AQ 003 01  — новый формат
+    "2026-09-04 02.29.05.jpg",          # A 724 CBM  — старый советский
+    "photo_2026-09-04 02.26.51.jpeg",   # 237 BLM 01 — образец
+]
 _cache: dict[tuple[str, str], ALPR] = {}
 
 
@@ -114,6 +138,29 @@ async def recognize(
                 "box_size_px": {"w": bb.x2 - bb.x1, "h": bb.y2 - bb.y1},
             }
         )
+
+    # Посимвольная уверенность + приведение к формату РК.
+    det_m, ocr_m = get_raw(detector, ocr)
+    for entry, d in zip(plates, alpr.predict(image)):
+        bb = d.detection.bounding_box
+        crop = image[max(bb.y1, 0):min(bb.y2, image.shape[0]),
+                     max(bb.x1, 0):min(bb.x2, image.shape[1])]
+        if crop.size == 0:
+            continue
+        text, probs = ocr_m.run(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY), return_confidence=True)
+        clean = text.pop().replace("_", "")
+        confs = np.array(probs).ravel().tolist()[: len(clean)]
+        fmt = normalize_kz(clean, char_confidences=confs)
+        entry["char_confidence"] = [round(float(c), 3) for c in confs]
+        entry["confidence_min"] = round(float(min(confs)), 4) if confs else None
+        entry["kz"] = {
+            "plate": fmt.plate,
+            "format": fmt.format_name,
+            "region": fmt.region,
+            "corrections": fmt.corrections,
+            "status": fmt.status,
+            "trusted": fmt.is_trusted,
+        }
 
     annotated = alpr.draw_predictions(image.copy())
     ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -223,7 +270,15 @@ async function send(file){
     let html='';
     if(j.plates&&j.plates.length){
       for(const p of j.plates){
-        html+=`<div class="hit"><span class="plate">${p.plate_canon||'—'}</span>
+        const k=p.kz||{};
+        const st={ok:'good',corrected:'mid',ambiguous:'bad',unknown_format:'bad'}[k.status]||'bad';
+        html+=`<div class="hit"><span class="plate">${k.plate||p.plate_canon||'—'}</span>
+          <span class="conf" style="margin-left:8px"><b class="${st}">${
+          k.format||'формат не распознан'}</b>${k.corrections?` · правок ${k.corrections}`:''}${
+          k.region?` · регион ${k.region}`:''}</span></div>
+        <div class="hit"><span style="font-size:12px;color:#8b95a5">сырой OCR: <b>${
+          p.plate_canon||'—'}</b> · мин. уверенность по символу <b class="${
+          cls(p.confidence_min)}">${((p.confidence_min||0)*100).toFixed(1)}%</b></span>
           <span class="conf">OCR <b class="${cls(p.ocr_confidence)}">${
           (p.ocr_confidence*100).toFixed(1)}%</b> · детектор <b class="${
           cls(p.detector_confidence)}">${(p.detector_confidence*100).toFixed(1)}%</b></span></div>`;

@@ -106,9 +106,6 @@ jobs:
 
       - name: Mypy — type checker
         working-directory: backend
-        # Бэкенд ещё в раннем развитии: типы проверяем и показываем,
-        # но не блокируем CI. Убрать continue-on-error, когда код созреет.
-        continue-on-error: true
         run: |
           if find src -name '*.py' -print -quit 2>/dev/null | grep -q .; then
             mypy src/
@@ -158,9 +155,8 @@ jobs:
         run: ruff format --check cv/
 
       - name: Mypy — type checker
-        # CV — лаборатория, типизация пока не строгая → не блокируем
-        continue-on-error: true
-        run: mypy cv/
+        working-directory: cv
+        run: mypy .
 
       - name: Pytest
         working-directory: cv
@@ -234,10 +230,9 @@ jobs:
             image: frontend
             # Прод-образ фронта (nginx + статика), не dev-Dockerfile
             dockerfile: ./frontend/Dockerfile.prod
-            # Публичный адрес API вшивается в бандл на этапе сборки (Vite).
-            # PROD_DOMAIN — repo variable (Settings → Variables).
+            # Без PROD_DOMAIN API использует тот же origin, что и frontend.
             build_args: |
-              VITE_API_URL=https://${{ vars.PROD_DOMAIN }}
+              VITE_API_URL=${{ vars.PROD_DOMAIN && format('https://{0}', vars.PROD_DOMAIN) || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -254,7 +249,7 @@ jobs:
 
       - name: Lowercase image prefix
         # GHCR/Docker требуют имя репозитория в нижнем регистре, а owner
-        # может содержать заглавные буквы (например CodeANPR) — приводим
+        # может содержать заглавные буквы — приводим
         # к lowercase, иначе buildx падает на cache-from/cache-to.
         run: echo "IMAGE_PREFIX=ghcr.io/${OWNER,,}/smart-parking" >> "$GITHUB_ENV"
         env:
@@ -283,16 +278,16 @@ jobs:
           cache-to: type=registry,ref=${{ env.IMAGE_PREFIX }}-${{ matrix.image }}:buildcache,mode=max
 
   # ─────────────────────────────────────────────
-  # 5. DEPLOY → VPS (только main, с ручным подтверждением)
+  # 5. DEPLOY → VPS (main, только после явного включения)
   # ─────────────────────────────────────────────
   deploy:
     name: "Deploy to VPS"
     needs: [build-and-push]
     # !cancelled() && !failure() — как у build-and-push: иначе deploy пропускается
     # из-за skip-каскада, когда backend/cv/frontend не менялись и были skipped.
-    if: ${{ !cancelled() && !failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+    if: ${{ !cancelled() && !failure() && github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
-    # Protected environment → деплой ждёт ручного подтверждения (required reviewers)
+    # Required reviewers нужно настроить в Settings → Environments отдельно.
     environment: production
     # Не отменяем идущий деплой и не запускаем два параллельно
     concurrency:
@@ -300,6 +295,26 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Check deployment configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          PROD_DOMAIN: ${{ vars.PROD_DOMAIN }}
+        run: |
+          missing=0
+          for key in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY PROD_DOMAIN; do
+            if [ -z "${!key}" ]; then
+              echo "::error::$key is not configured"
+              missing=1
+            fi
+          done
+          if [[ "$PROD_DOMAIN" == *"://"* || "$PROD_DOMAIN" == */* ]]; then
+            echo "::error::PROD_DOMAIN must be a hostname without a scheme or path"
+            missing=1
+          fi
+          exit "$missing"
+
       - name: Deploy over SSH (pull GHCR images + compose up)
         uses: appleboy/ssh-action@v1
         with:

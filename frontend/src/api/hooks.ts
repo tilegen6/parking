@@ -414,7 +414,7 @@ export function useKaspiPay() {
           sum: args.sum.toFixed(2),
           txn_date: new Date()
             .toISOString()
-            .replace(/[-:T]/g, "")
+            .replace(/-|:|T/g, "")
             .slice(0, 14),
           format: "json",
         })}`,

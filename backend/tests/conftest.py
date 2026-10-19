@@ -9,6 +9,7 @@ import os
 # Секреты обязательны для Settings — задаём до импорта src.config
 os.environ.setdefault("POSTGRES_PASSWORD", "test")
 os.environ.setdefault("MINIO_ROOT_PASSWORD", "test")
+os.environ.setdefault("JWT_SECRET_KEY", "test-only-jwt-signing-key-at-least-32-bytes")
 
 import pytest_asyncio
 from fastapi import FastAPI

@@ -17,7 +17,8 @@
 ты пушишь код в main
    → GitHub Actions собирает Docker-образы backend/frontend
    → кладёт их в GHCR (склад образов GitHub)
-   → ждёт твоего «Approve»
+   → при DEPLOY_ENABLED=true запускает настроенный deployment
+   → ждёт «Approve», если в environment настроены Required reviewers
    → заходит по SSH на VPS: «скачай новые образы и перезапусти»
    → на VPS поднимается стек; наружу открыт только nginx с HTTPS
 ```
@@ -223,7 +224,8 @@ $COMPOSE ps
 На сайте GitHub, репозиторий **tilegen6/parking → Settings**.
 
 - **Secrets and variables → Actions → Variables**: `PROD_DOMAIN` = `<domain>`
-  *(вшивается в бандл фронта, чтобы браузер знал адрес API).*
+  *(только имя хоста, без https:// и пути; вшивается в бандл фронта).*
+  Без значения frontend обращается к API на том же origin; образы можно собирать до настройки VPS.
 - **Secrets and variables → Actions → Secrets**:
   - `DEPLOY_HOST` = `<IP>`
   - `DEPLOY_USER` = `deploy`
@@ -232,11 +234,21 @@ $COMPOSE ps
   - `DEPLOY_SSH_PORT` = `22` (если не менял)
 - **Settings → Environments → New environment → `production`** → включить
   **Required reviewers** и добавить себя. Это ручное подтверждение: job `deploy`
-  будет ждать твоего «Approve».
+  будет ждать твоего «Approve», если этот механизм доступен для приватного репозитория на вашем тарифе.
+  Само указание `environment: production` в workflow не создаёт правило одобрения.
+- Только после проверки SSH, домена, `.env` и ручного запуска добавить repository variable
+  **`DEPLOY_ENABLED=true`**. Пока переменная отсутствует или имеет другое значение,
+  CI проверяет код и публикует образы, а job `deploy` пропускается.
+  Перед SSH workflow проверяет наличие обязательных значений, не выводя их содержимое.
+
+Образы проекта: `ghcr.io/tilegen6/smart-parking-backend` и
+`ghcr.io/tilegen6/smart-parking-frontend`; эти же имена использует production Compose.
+Адрес VPS, домен и SSH-ключ должны быть реальными; их отсутствие не заменяется фиктивными настройками.
 
 После настройки цикл такой: push в `main` → CI собирает и пушит образы
-(`sha-<sha>`, `latest`) → в **Actions** job `deploy` ждёт → жмёшь **Review
-deployments → Approve** → CI сам заходит на сервер и обновляет контейнеры.
+(`sha-<sha>`, `latest`) → при `DEPLOY_ENABLED=true` запускается job `deploy`.
+Если настроены Required reviewers, сначала нажмите **Review deployments → Approve**;
+затем CI заходит на сервер и обновляет контейнеры.
 
 ---
 

@@ -19,6 +19,8 @@ import os
 import sys
 import threading
 from collections import deque
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import numpy as np
 
@@ -368,7 +370,14 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
         default_version = "fastplate"
     dfl = PIPELINE_VERSIONS[default_version]
 
-    app = FastAPI(title="Smart Parking CV Service", version="0.2.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            stream_mgr.stop_all()
+
+    app = FastAPI(title="Smart Parking CV Service", version="0.2.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -520,10 +529,6 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
     @app.get("/stream/preview")
     def stream_preview(camera_name: str = "cv-stream") -> dict:
         return stream_mgr.preview(camera_name)
-
-    @app.on_event("shutdown")
-    def _shutdown_streams() -> None:
-        stream_mgr.stop_all()
 
     return app
 

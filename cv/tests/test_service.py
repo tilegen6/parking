@@ -91,3 +91,14 @@ def test_recognize_rejects_unknown_engine():
         data={"engine": "nonexistent"},
     )
     assert r.status_code == 400
+
+
+def test_shutdown_stops_streams(monkeypatch):
+    stopped = []
+    monkeypatch.setattr(
+        service.StreamManager, "stop_all", lambda self: stopped.append(self)
+    )
+    with _client() as client:
+        assert client.get("/health").status_code == 200
+        assert not stopped
+    assert len(stopped) == 1

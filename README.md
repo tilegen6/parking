@@ -20,7 +20,7 @@ MVP охватывает один объект с въездом и выездо
 
 ## Состояние и материалы
 
-Статус на 20 октября 2026: код прототипа существует; пакет анализа и проектирования подготовлен к рассмотрению. Реальные интервью, отзыв руководителя и независимое командное ревью требуют подтверждений. [Полный комплект и соответствие требованиям](docs/pre-defense/00-index.md), [проверки](docs/pre-defense/12-verification-results.md), [карточка сдачи](docs/pre-defense/13-submission.md).
+Статус на 20 октября 2026: код прототипа существует; пакет анализа и проектирования из [PR №1](https://github.com/tilegen6/parking/pull/1) включён в `main`. Актуальная исправленная версия — `pre-defense-1-r3`; предыдущие теги являются архивными. Реальные интервью, отзыв руководителя и независимое командное ревью требуют подтверждений. [Полный комплект и соответствие требованиям](docs/pre-defense/00-index.md), [проверки](docs/pre-defense/12-verification-results.md), [карточка сдачи](docs/pre-defense/13-submission.md).
 
 YouTrack исключён из этой работы по указанию владельца. [Распределение задач, сроки и риски](docs/pre-defense/10-management.md) ведутся в Markdown; это не подтверждение выполнения требования комиссии о YouTrack.
 
@@ -71,6 +71,7 @@ python -m venv .venv-backend
 .venv-backend/Scripts/python -m ruff format --check backend
 Push-Location backend
 ../.venv-backend/Scripts/python -m pytest -q
+../.venv-backend/Scripts/python -m mypy src/
 Pop-Location
 
 python -m venv .venv-cv
@@ -79,6 +80,7 @@ python -m venv .venv-cv
 .venv-cv/Scripts/python -m ruff format --check cv
 Push-Location cv
 ../.venv-cv/Scripts/python -m pytest -q
+../.venv-cv/Scripts/python -m mypy .
 Pop-Location
 
 Push-Location frontend
@@ -93,4 +95,6 @@ Pop-Location
 
 ## Внесение изменений и сдача
 
-Работайте со своего аккаунта в отдельной ветке; указывайте результат и проверки в Pull Request. Перед включением в `main` требуется ревью другого участника. Теги сдачи неизменяемы; правила и сценарий демонстрации — в [карточке сдачи](docs/pre-defense/13-submission.md).
+Работайте со своего аккаунта в отдельной ветке; указывайте результат и проверки в Pull Request. Рекомендуемый порядок для следующих изменений — ревью другого участника до включения в `main`. PR №1 уже слит по решению владельца; формального независимого ревью пока нет. Теги сдачи неизменяемы; правила и сценарий демонстрации — в [карточке сдачи](docs/pre-defense/13-submission.md).
+
+Production-образы публикуются в `ghcr.io/tilegen6/smart-parking-{backend,frontend}`. Деплой на сервер запускается только при repository variable `DEPLOY_ENABLED=true` и заполненной конфигурации; без неё CI продолжает проверять проект и публиковать образы, но не подключается к VPS. Настройка — [deploy/DEPLOY.md](deploy/DEPLOY.md).

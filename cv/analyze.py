@@ -22,6 +22,21 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
+
+
+class AnalysisReport(TypedDict):
+    captures_dir: str
+    total_events: int
+    field_presence: dict[str, int]
+    direction_breakdown: dict[str, int]
+    event_type_breakdown: dict[str, int]
+    confidence_stats: dict[str, float]
+    duplicates_window_s: float
+    duplicates_found: int
+    duplicates: list[dict[str, object]]
+    direction_available: bool
+
 
 # Поля, присутствие которых мы отслеживаем в summary.json
 TRACKED = [
@@ -78,7 +93,7 @@ def _find_duplicates(
     return dups
 
 
-def analyze(root: Path, window_s: float) -> dict[str, object]:
+def analyze(root: Path, window_s: float) -> AnalysisReport:
     events = _load_summaries(root)
     n = len(events)
 
@@ -92,7 +107,7 @@ def analyze(root: Path, window_s: float) -> dict[str, object]:
             confidences.append(float(str(e.get("confidence"))))
         except (TypeError, ValueError):
             pass
-    conf_stats = {}
+    conf_stats: dict[str, float] = {}
     if confidences:
         conf_stats = {
             "count": len(confidences),
@@ -117,14 +132,14 @@ def analyze(root: Path, window_s: float) -> dict[str, object]:
     }
 
 
-def _print_report(rep: dict[str, object]) -> None:
+def _print_report(rep: AnalysisReport) -> None:
     print(f"\n=== ANALYZE {rep['captures_dir']} ===")
     print(f"Событий всего: {rep['total_events']}")
     if not rep["total_events"]:
         print("Дампов нет. Сначала сними трафик: python capture_server.py")
         return
     print("\nЗаполненность полей:")
-    for f, c in rep["field_presence"].items():  # type: ignore[union-attr]
+    for f, c in rep["field_presence"].items():
         print(f"  {f:<14} {c}/{rep['total_events']}")
     print(f"\nНаправления: {rep['direction_breakdown']}")
     print(f"Типы событий: {rep['event_type_breakdown']}")
@@ -134,7 +149,7 @@ def _print_report(rep: dict[str, object]) -> None:
         f"{'ДА' if rep['direction_available'] else 'НЕТ — выводить по каналу/IP'}"
     )
     print(f"Дубли (<= {rep['duplicates_window_s']}s): {rep['duplicates_found']}")
-    for d in rep["duplicates"]:  # type: ignore[union-attr]
+    for d in rep["duplicates"]:
         print(f"  {d['plate']}  +{d['gap_s']}s  @ {d['at']}")
 
 

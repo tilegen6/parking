@@ -33,7 +33,7 @@ services:
 
   backend:
     # Готовый образ из GHCR вместо локальной сборки
-    image: ghcr.io/codeanpr/smart-parking-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/tilegen6/smart-parking-backend:${IMAGE_TAG:-latest}
     build: !reset null
     ports: !override []
     environment:
@@ -41,7 +41,7 @@ services:
       DEBUG: "false"
 
   frontend:
-    image: ghcr.io/codeanpr/smart-parking-frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/tilegen6/smart-parking-frontend:${IMAGE_TAG:-latest}
     build: !reset null
     ports: !override []
     # healthcheck из образа стучится на localhost → он резолвится в IPv6 (::1),

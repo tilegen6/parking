@@ -1,0 +1,27 @@
+digraph Parking {
+  graph [layout=neato, overlap=false];
+  node [fontname="Arial", shape=box];
+  "A-OP" -> "SC-01" [label=""];
+  "A-OP" -> "SC-04" [label=""];
+  "A-DRIVER" -> "SC-02" [label=""];
+  "A-LIST" -> "SC-03" [label=""];
+  "A-ADM" -> "SC-03" [label=""];
+  "A-ADM" -> "SC-06" [label=""];
+  "A-OPS" -> "SC-05" [label=""];
+  "E-CAM" -> "SC-01" [label=""];
+  "E-PAY" -> "SC-02" [label=""];
+  "A-OP" -> "SC-02" [label=""];
+  "A-OP" [label="A-OP\nОператор", shape=plaintext, pos="1.6111111111111112,-1.8333333333333333!"];
+  "A-DRIVER" [label="A-DRIVER\nВодитель", shape=plaintext, pos="1.6111111111111112,-3.888888888888889!"];
+  "A-LIST" [label="A-LIST\nМенеджер списков", shape=plaintext, pos="1.6111111111111112,-6.111111111111111!"];
+  "A-ADM" [label="A-ADM\nАдминистратор", shape=plaintext, pos="1.6111111111111112,-8.333333333333334!"];
+  "A-OPS" [label="A-OPS\nИнженер эксплуатации", shape=plaintext, pos="12.722222222222221,-8.88888888888889!"];
+  "E-CAM" [label="E-CAM\nКамера", shape=plaintext, pos="12.722222222222221,-1.8888888888888888!"];
+  "E-PAY" [label="E-PAY\nПровайдер оплаты", shape=plaintext, pos="12.722222222222221,-4.0!"];
+  "SC-01" [label="SC-01\nВъезд и сессия", shape=ellipse, pos="7.472222222222222,-2.0!"];
+  "SC-02" [label="SC-02\nОплата и выезд", shape=ellipse, pos="7.472222222222222,-3.5555555555555554!"];
+  "SC-04" [label="SC-04\nРазбор ошибки OCR", shape=ellipse, pos="7.472222222222222,-5.111111111111111!"];
+  "SC-03" [label="SC-03\nПравила доступа", shape=ellipse, pos="7.472222222222222,-6.666666666666667!"];
+  "SC-06" [label="SC-06\nРоли и аудит", shape=ellipse, pos="7.472222222222222,-8.222222222222221!"];
+  "SC-05" [label="SC-05\nЭксплуатация / restore", shape=ellipse, pos="7.472222222222222,-9.583333333333334!"];
+}

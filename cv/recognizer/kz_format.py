@@ -21,8 +21,11 @@ VALID_REGIONS: frozenset[str] = frozenset(f"{i:02d}" for i in range(1, 21))
 
 # Что во что превращать, когда позиция требует ЦИФРУ, а OCR отдал букву.
 LETTER_TO_DIGIT: dict[str, str] = {
-    "O": "0", "Q": "0", "D": "0",
-    "I": "1", "L": "1",
+    "O": "0",
+    "Q": "0",
+    "D": "0",
+    "I": "1",
+    "L": "1",
     "Z": "2",
     "A": "4",
     "S": "5",
@@ -84,30 +87,30 @@ class PlateFormat:
 # Базовый набор, подтверждённый по фото образцов.
 # Порядок важен: при равной стоимости правок побеждает тот, что выше.
 FORMATS: tuple[PlateFormat, ...] = (
-    PlateFormat("DDDLLLDD", "классический", has_region=True),        # 237BLM01
+    PlateFormat("DDDLLLDD", "классический", has_region=True),  # 237BLM01
     PlateFormat("DDDLLDD", "классический короткий", has_region=True),  # 040BS01
-    PlateFormat("LLDDDDD", "новый", has_region=True),                # AQ00301
-    PlateFormat("LDDDLLL", "старый", has_region=False),              # A724CBM
+    PlateFormat("LLDDDDD", "новый", has_region=True),  # AQ00301
+    PlateFormat("LDDDLLL", "старый", has_region=False),  # A724CBM
     PlateFormat("LDDDDDD", "жёлтый/дипломатический", has_region=False),  # H444501
 )
 
 # Статусы разбора.
-STATUS_OK = "ok"                        # совпало без правок
-STATUS_CORRECTED = "corrected"          # подошло после замены символов
-STATUS_AMBIGUOUS = "ambiguous"          # два формата дали разный результат
-STATUS_UNKNOWN = "unknown_format"       # ни один шаблон не подошёл
+STATUS_OK = "ok"  # совпало без правок
+STATUS_CORRECTED = "corrected"  # подошло после замены символов
+STATUS_AMBIGUOUS = "ambiguous"  # два формата дали разный результат
+STATUS_UNKNOWN = "unknown_format"  # ни один шаблон не подошёл
 
 
 @dataclass(frozen=True)
 class FormatResult:
     """Результат приведения к формату."""
 
-    plate: str                  # что использовать дальше
-    original: str               # что пришло от OCR (канонизированное)
-    format_name: str | None     # какой шаблон сработал
-    corrections: int            # сколько символов заменено
+    plate: str  # что использовать дальше
+    original: str  # что пришло от OCR (канонизированное)
+    format_name: str | None  # какой шаблон сработал
+    corrections: int  # сколько символов заменено
     status: str
-    region: str | None = None   # код области, если формат его содержит
+    region: str | None = None  # код области, если формат его содержит
 
     @property
     def is_trusted(self) -> bool:

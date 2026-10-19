@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="920" viewBox="0 0 1320 920" role="img">
+<title>Component Diagram (draft) — текущие логические границы</title>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#527183"/></marker></defs>
+<rect width="1320" height="920" fill="#f8fafc"/>
+<g font-family="Arial, sans-serif" fill="#17354a">
+<text x="660.0" y="35" text-anchor="middle" font-size="23">Component Diagram (draft) — текущие логические границы</text>
+<rect x="65" y="205" width="775" height="370" rx="12" fill="#edf4f8" stroke="#8299a8" stroke-dasharray="7 5"/>
+<text x="452.5" y="230" text-anchor="middle" font-size="18">Программные компоненты приложения</text>
+<path d="M223.47826086956522,160.0 L244.7826086956522,405.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="234.1304347826087" y="274.5" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">кадры</text>
+<path d="M300,160 L420,190 L420,375 L550,375 L550,405" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="352" y="300" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">ANPR HTTP</text>
+<path d="M620.0,350.0 L620.0,405.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="620.0" y="369.5" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">REST / JWT</text>
+<path d="M400.0,465.0 L470.0,465.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="435.0" y="457.0" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">HTTP</text>
+<path d="M617.5,525.0 L612.0833333333334,655.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="614.7916666666667" y="582.0" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">SQL / транзакции</text>
+<path d="M770.0,474.18367346938777 L955.0,485.51020408163265" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="862.5" y="471.84693877551024" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">S3 / ссылки</text>
+<path d="M1016.6666666666666,210.0 L713.3333333333334,405.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="865.0" y="299.5" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">health / logs</text>
+<path d="M1110.0,210.0 L1110.0,445.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="1110.0" y="319.5" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">политика хранения</text>
+<path d="M547.8195488721805,525.0 L277.1428571428571,750.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="412.4812030075188" y="629.5" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">запрос / callback</text>
+<path d="M708.421052631579,525.0 L1040.0,750.0" fill="none" stroke="#527183" stroke-width="1.6" marker-end="url(#arrow)"/>
+<text x="874.2105263157895" y="629.5" text-anchor="middle" font-size="14" paint-order="stroke" stroke="#f8fafc" stroke-width="5" stroke-linejoin="round">решение / состояние</text>
+<g id="E-CAM">
+<rect x="80" y="80" width="280" height="80" rx="8" fill="#fff" stroke="#245b77" stroke-width="1.8"/>
+<text x="220.0" y="115.0" text-anchor="middle" font-size="16">E-CAM</text><text x="220.0" y="137.0" text-anchor="middle" font-size="16">Камера / видеопоток</text>
+</g>
+<g id="C-UI">
+<rect x="470" y="250" width="300" height="100" rx="8" fill="#e1f2f3" stroke="#245b77" stroke-width="1.8"/>
+<text x="620.0" y="273.0" text-anchor="middle" font-size="16">«component»</text><text x="620.0" y="295.0" text-anchor="middle" font-size="16">C-UI</text><text x="620.0" y="317.0" text-anchor="middle" font-size="16">React / TypeScript</text><text x="620.0" y="339.0" text-anchor="middle" font-size="16">Рабочее место оператора</text>
+</g>
+<g id="C-CV">
+<rect x="100" y="405" width="300" height="120" rx="8" fill="#e1f2f3" stroke="#245b77" stroke-width="1.8"/>
+<text x="250.0" y="438.0" text-anchor="middle" font-size="16">«component»</text><text x="250.0" y="460.0" text-anchor="middle" font-size="16">C-CV</text><text x="250.0" y="482.0" text-anchor="middle" font-size="16">CV service</text><text x="250.0" y="504.0" text-anchor="middle" font-size="16">Детекция → OCR → правила</text>
+</g>
+<g id="C-API">
+<rect x="470" y="405" width="300" height="120" rx="8" fill="#e1f2f3" stroke="#245b77" stroke-width="1.8"/>
+<text x="620.0" y="438.0" text-anchor="middle" font-size="16">«component»</text><text x="620.0" y="460.0" text-anchor="middle" font-size="16">C-API</text><text x="620.0" y="482.0" text-anchor="middle" font-size="16">FastAPI / modules</text><text x="620.0" y="504.0" text-anchor="middle" font-size="16">Сессии · доступ · оплата</text>
+</g>
+<g id="C-OBS">
+<rect x="955" y="90" width="310" height="120" rx="8" fill="#e1f2f3" stroke="#245b77" stroke-width="1.8"/>
+<text x="1110.0" y="123.0" text-anchor="middle" font-size="16">«component»</text><text x="1110.0" y="145.0" text-anchor="middle" font-size="16">C-OBS</text><text x="1110.0" y="167.0" text-anchor="middle" font-size="16">CI / мониторинг / backup</text><text x="1110.0" y="189.0" text-anchor="middle" font-size="16">Compose · Prometheus · Loki</text>
+</g>
+<g id="C-DB">
+<rect x="450" y="655" width="320" height="100" rx="8" fill="#fff" stroke="#245b77" stroke-width="1.8"/>
+<ellipse cx="610.0" cy="665" rx="160.0" ry="10" fill="#e4edf2" stroke="#245b77"/>
+<text x="610.0" y="689.0" text-anchor="middle" font-size="16">C-DB</text><text x="610.0" y="711.0" text-anchor="middle" font-size="16">PostgreSQL</text><text x="610.0" y="733.0" text-anchor="middle" font-size="16">Операционные данные</text>
+</g>
+<g id="C-STORE">
+<rect x="955" y="445" width="310" height="100" rx="8" fill="#fff" stroke="#245b77" stroke-width="1.8"/>
+<ellipse cx="1110.0" cy="455" rx="155.0" ry="10" fill="#e4edf2" stroke="#245b77"/>
+<text x="1110.0" y="479.0" text-anchor="middle" font-size="16">C-STORE</text><text x="1110.0" y="501.0" text-anchor="middle" font-size="16">MinIO</text><text x="1110.0" y="523.0" text-anchor="middle" font-size="16">Снимки и объекты</text>
+</g>
+<g id="E-PAY">
+<rect x="80" y="750" width="280" height="95" rx="8" fill="#fff" stroke="#245b77" stroke-width="1.8"/>
+<text x="220.0" y="781.5" text-anchor="middle" font-size="16">E-PAY</text><text x="220.0" y="803.5" text-anchor="middle" font-size="16">Провайдер оплаты</text><text x="220.0" y="825.5" text-anchor="middle" font-size="16">В демонстрации: mock</text>
+</g>
+<g id="E-GATE">
+<rect x="955" y="750" width="310" height="95" rx="8" fill="#fff" stroke="#245b77" stroke-width="1.8"/>
+<text x="1110.0" y="781.5" text-anchor="middle" font-size="16">E-GATE</text><text x="1110.0" y="803.5" text-anchor="middle" font-size="16">Контроллер шлагбаума</text><text x="1110.0" y="825.5" text-anchor="middle" font-size="16">В демонстрации: mock</text>
+</g>
+<text x="660.0" y="902" text-anchor="middle" font-size="14">Draft · 20.10.2026 · внешние интеграции требуют испытаний</text>
+</g></svg>

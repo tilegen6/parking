@@ -1,0 +1,21 @@
+digraph Parking {
+  graph [layout=neato, overlap=false];
+  node [fontname="Arial", shape=box];
+  "A-OP" -> "SYSTEM" [label="журнал / исключения"];
+  "A-ADM" -> "SYSTEM" [label="настройки / роли"];
+  "A-LIST" -> "SYSTEM" [label="правила доступа"];
+  "A-OPS" -> "SYSTEM" [label="состояние / восстановление"];
+  "A-DRIVER" -> "SYSTEM" [label="оплата / информация"];
+  "E-CAM" -> "SYSTEM" [label="изображение / событие"];
+  "SYSTEM" -> "E-PAY" [label="платёж / подтверждение"];
+  "SYSTEM" -> "E-GATE" [label="решение / состояние"];
+  "A-OP" [label="A-OP\nОператор", shape=plaintext, pos="1.7222222222222223,-2.0!"];
+  "A-ADM" [label="A-ADM\nАдминистратор", shape=plaintext, pos="1.7222222222222223,-3.7222222222222223!"];
+  "A-LIST" [label="A-LIST\nМенеджер списков", shape=plaintext, pos="1.7222222222222223,-5.444444444444445!"];
+  "A-OPS" [label="A-OPS\nИнженер эксплуатации", shape=plaintext, pos="1.7222222222222223,-7.277777777777778!"];
+  "A-DRIVER" [label="A-DRIVER\nВодитель", shape=plaintext, pos="6.944444444444445,-1.4166666666666667!"];
+  "SYSTEM" [label="SYSTEM\nSmart Parking ANPR\nСобытия · сессии · доступ\nТариф · mock-оплата · аудит", shape=box, pos="6.888888888888889,-4.555555555555555!"];
+  "E-CAM" [label="E-CAM\nКамера / поток\nANPR или кадры", shape=box, pos="12.666666666666666,-2.3055555555555554!"];
+  "E-PAY" [label="E-PAY\nПлатёжный провайдер\nKaspi: внешний контур", shape=box, pos="12.666666666666666,-4.472222222222222!"];
+  "E-GATE" [label="E-GATE\nКонтроллер шлагбаума\nФизическое оборудование", shape=box, pos="12.666666666666666,-6.972222222222222!"];
+}

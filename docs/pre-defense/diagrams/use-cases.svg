@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="980" viewBox="0 0 1320 980" role="img">
+<title>Use Case Diagram — Smart Parking ANPR</title>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#527183"/></marker></defs>
+<rect width="1320" height="980" fill="#f8fafc"/>
+<g font-family="Arial, sans-serif" fill="#17354a">
+<text x="660.0" y="35" text-anchor="middle" font-size="23">Use Case Diagram — Smart Parking ANPR</text>
+<rect x="385" y="75" width="580" height="840" rx="12" fill="#edf4f8" stroke="#8299a8" stroke-dasharray="7 5"/>
+<text x="675.0" y="100" text-anchor="middle" font-size="18">Smart Parking ANPR</text>
+<path d="M145.0,150.0 L460.0,167.91469194312796" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M145.0,150.0 L595.9274193548387,415.0" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M145.0,335.0 L460.0,326.042654028436" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M145.0,535.0 L460.0,573.8151658767772" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M145.0,735.0 L496.6666666666667,645.0" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M145.0,735.0 L460.0,737.9857819905213" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M1145.0,785.0 L885.0,827.6455026455027" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M1145.0,155.0 L885.0,168.75661375661375" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M1145.0,345.0 L885.0,331.2433862433862" fill="none" stroke="#527183" stroke-width="1.6"/>
+<path d="M145.0,150.0 L532.8676470588235,275.0" fill="none" stroke="#527183" stroke-width="1.6"/>
+<g id="A-OP">
+<circle cx="145.0" cy="127" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M145.0,137 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="145.0" y="195" text-anchor="middle" font-size="15">Оператор</text><text x="145.0" y="217" text-anchor="middle" font-size="15">A-OP</text>
+</g>
+<g id="A-DRIVER">
+<circle cx="145.0" cy="312" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M145.0,322 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="145.0" y="380" text-anchor="middle" font-size="15">Водитель</text><text x="145.0" y="402" text-anchor="middle" font-size="15">A-DRIVER</text>
+</g>
+<g id="A-LIST">
+<circle cx="145.0" cy="512" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M145.0,522 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="145.0" y="580" text-anchor="middle" font-size="15">Менеджер списков</text><text x="145.0" y="602" text-anchor="middle" font-size="15">A-LIST</text>
+</g>
+<g id="A-ADM">
+<circle cx="145.0" cy="712" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M145.0,722 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="145.0" y="780" text-anchor="middle" font-size="15">Администратор</text><text x="145.0" y="802" text-anchor="middle" font-size="15">A-ADM</text>
+</g>
+<g id="A-OPS">
+<circle cx="1145.0" cy="762" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M1145.0,772 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="1145.0" y="830" text-anchor="middle" font-size="15">Инженер эксплуатации</text><text x="1145.0" y="852" text-anchor="middle" font-size="15">A-OPS</text>
+</g>
+<g id="E-CAM">
+<circle cx="1145.0" cy="132" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M1145.0,142 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="1145.0" y="200" text-anchor="middle" font-size="15">Камера</text><text x="1145.0" y="222" text-anchor="middle" font-size="15">E-CAM</text>
+</g>
+<g id="E-PAY">
+<circle cx="1145.0" cy="322" r="10" fill="#fff" stroke="#254e67" stroke-width="2"/>
+<path d="M1145.0,332 v25 m-20,-16 h40 m-20,16 l-17,18 m17,-18 l17,18" fill="none" stroke="#254e67" stroke-width="2"/>
+<text x="1145.0" y="390" text-anchor="middle" font-size="15">Провайдер оплаты</text><text x="1145.0" y="412" text-anchor="middle" font-size="15">E-PAY</text>
+</g>
+<g id="SC-01">
+<ellipse cx="672.5" cy="180.0" rx="212.5" ry="45.0" fill="#fff" stroke="#245b77"/>
+<text x="672.5" y="169.0" text-anchor="middle" font-size="17">SC-01</text><text x="672.5" y="191.0" text-anchor="middle" font-size="17">Въезд и сессия</text>
+</g>
+<g id="SC-02">
+<ellipse cx="672.5" cy="320.0" rx="212.5" ry="45.0" fill="#fff" stroke="#245b77"/>
+<text x="672.5" y="309.0" text-anchor="middle" font-size="17">SC-02</text><text x="672.5" y="331.0" text-anchor="middle" font-size="17">Оплата и выезд</text>
+</g>
+<g id="SC-04">
+<ellipse cx="672.5" cy="460.0" rx="212.5" ry="45.0" fill="#fff" stroke="#245b77"/>
+<text x="672.5" y="449.0" text-anchor="middle" font-size="17">SC-04</text><text x="672.5" y="471.0" text-anchor="middle" font-size="17">Разбор ошибки OCR</text>
+</g>
+<g id="SC-03">
+<ellipse cx="672.5" cy="600.0" rx="212.5" ry="45.0" fill="#fff" stroke="#245b77"/>
+<text x="672.5" y="589.0" text-anchor="middle" font-size="17">SC-03</text><text x="672.5" y="611.0" text-anchor="middle" font-size="17">Правила доступа</text>
+</g>
+<g id="SC-06">
+<ellipse cx="672.5" cy="740.0" rx="212.5" ry="45.0" fill="#fff" stroke="#245b77"/>
+<text x="672.5" y="729.0" text-anchor="middle" font-size="17">SC-06</text><text x="672.5" y="751.0" text-anchor="middle" font-size="17">Роли и аудит</text>
+</g>
+<g id="SC-05">
+<ellipse cx="672.5" cy="862.5" rx="212.5" ry="37.5" fill="#fff" stroke="#245b77"/>
+<text x="672.5" y="851.5" text-anchor="middle" font-size="17">SC-05</text><text x="672.5" y="873.5" text-anchor="middle" font-size="17">Эксплуатация / restore</text>
+</g>
+<text x="660.0" y="962" text-anchor="middle" font-size="14">Draft · 20.10.2026 · внешние интеграции требуют испытаний</text>
+</g></svg>

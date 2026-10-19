@@ -1,0 +1,23 @@
+digraph Parking {
+  graph [layout=neato, overlap=false];
+  node [fontname="Arial", shape=box];
+  "E-CAM" -> "C-CV" [label="кадры"];
+  "E-CAM" -> "C-API" [label="ANPR HTTP"];
+  "C-UI" -> "C-API" [label="REST / JWT"];
+  "C-CV" -> "C-API" [label="HTTP"];
+  "C-API" -> "C-DB" [label="SQL / транзакции"];
+  "C-API" -> "C-STORE" [label="S3 / ссылки"];
+  "C-OBS" -> "C-API" [label="health / logs"];
+  "C-OBS" -> "C-STORE" [label="политика хранения"];
+  "C-API" -> "E-PAY" [label="запрос / callback"];
+  "C-API" -> "E-GATE" [label="решение / состояние"];
+  "E-CAM" [label="E-CAM\nКамера / видеопоток", shape=box, pos="2.4444444444444446,-1.3333333333333333!"];
+  "C-UI" [label="C-UI\nReact / TypeScript\nРабочее место оператора", shape=box, pos="6.888888888888889,-3.3333333333333335!"];
+  "C-CV" [label="C-CV\nCV service\nДетекция → OCR → правила", shape=box, pos="2.7777777777777777,-5.166666666666667!"];
+  "C-API" [label="C-API\nFastAPI / modules\nСессии · доступ · оплата", shape=box, pos="6.888888888888889,-5.166666666666667!"];
+  "C-OBS" [label="C-OBS\nCI / мониторинг / backup\nCompose · Prometheus · Loki", shape=box, pos="12.333333333333334,-1.6666666666666667!"];
+  "C-DB" [label="C-DB\nPostgreSQL\nОперационные данные", shape=cylinder, pos="6.777777777777778,-7.833333333333333!"];
+  "C-STORE" [label="C-STORE\nMinIO\nСнимки и объекты", shape=cylinder, pos="12.333333333333334,-5.5!"];
+  "E-PAY" [label="E-PAY\nПровайдер оплаты\nВ демонстрации: mock", shape=box, pos="2.4444444444444446,-8.86111111111111!"];
+  "E-GATE" [label="E-GATE\nКонтроллер шлагбаума\nВ демонстрации: mock", shape=box, pos="12.333333333333334,-8.86111111111111!"];
+}

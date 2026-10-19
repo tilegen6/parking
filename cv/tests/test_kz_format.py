@@ -58,7 +58,7 @@ class TestExactFormats:
         assert res.is_trusted
 
     def test_classic_format_not_stolen_by_yellow(self) -> None:
-        """`040BS01` подходит под классический без правок — жёлтый не должен перебить."""
+        """040BS01 подходит под классический без правок — жёлтый не должен перебить."""
         res = normalize_kz("040BS01")
         assert res.format_name == "классический короткий"
         assert res.corrections == 0
@@ -204,11 +204,17 @@ class TestConfidenceGating:
         """Случаи с реальных фото, где маппер раньше выдумывал номер."""
         confident = [0.99] * 7
         # было: ABQ0301 -> AB00301 (правда AQ00301)
-        assert normalize_kz("ABQ0301", char_confidences=confident).status == STATUS_UNKNOWN
+        assert (
+            normalize_kz("ABQ0301", char_confidences=confident).status == STATUS_UNKNOWN
+        )
         # было: 1317002 -> I317002 (полицейский 131702, лишний ноль от OCR)
-        assert normalize_kz("1317002", char_confidences=confident).status == STATUS_UNKNOWN
+        assert (
+            normalize_kz("1317002", char_confidences=confident).status == STATUS_UNKNOWN
+        )
         # было: 24401AN -> Z440IAN (правда 249AN01, двухрядный прочитан неверно)
-        assert normalize_kz("24401AN", char_confidences=confident).status == STATUS_UNKNOWN
+        assert (
+            normalize_kz("24401AN", char_confidences=confident).status == STATUS_UNKNOWN
+        )
 
     def test_threshold_is_configurable(self) -> None:
         conf = [0.99] * 6 + [0.95, 0.95]

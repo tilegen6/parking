@@ -123,7 +123,7 @@ sudo -iu deploy
 `deploy/` — по ним compose знает, что запускать (код backend/frontend приезжает
 готовыми образами из GHCR, собирать его на сервере не нужно).
 ```bash
-git clone https://github.com/CodeANPR/smart-parking.git /opt/smart-parking
+git clone https://github.com/tilegen6/parking.git /opt/smart-parking
 cd /opt/smart-parking
 git checkout main
 cp .env.example .env
@@ -220,7 +220,7 @@ $COMPOSE ps
 
 ## Шаг 5. Автодеплой из GitHub
 
-На сайте GitHub, репозиторий **CodeANPR/smart-parking → Settings**.
+На сайте GitHub, репозиторий **tilegen6/parking → Settings**.
 
 - **Secrets and variables → Actions → Variables**: `PROD_DOMAIN` = `<domain>`
   *(вшивается в бандл фронта, чтобы браузер знал адрес API).*

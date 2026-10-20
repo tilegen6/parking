@@ -16,6 +16,12 @@ NOW = datetime.now(timezone.utc)
 
 
 @pytest_asyncio.fixture
+async def client(client, operator_headers):
+    client.headers.update(operator_headers)
+    return client
+
+
+@pytest_asyncio.fixture
 async def seeded(db):
     """Три сессии: A (закрыта, 111AAA01), B (active, 222BBB02), C (active, 111AAA01)."""
     a = ParkingSession(
@@ -101,13 +107,34 @@ async def test_filter_by_status(client, seeded):
     assert r2.json()["total"] == 1
 
 
-async def test_filter_by_date(client, seeded):
-    today = NOW.date().isoformat()
-    r = await client.get("/api/v1/parking-sessions", params={"date_from": today})
-    assert r.json()["total"] == 3
-    yesterday = (NOW - timedelta(days=1)).date().isoformat()
-    r2 = await client.get("/api/v1/parking-sessions", params={"date_to": yesterday})
-    assert r2.json()["total"] == 0
+async def test_filter_by_date(client, db):
+    start = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    times = [
+        start - timedelta(microseconds=1),
+        start,
+        start + timedelta(days=1, microseconds=-1),
+        start + timedelta(days=1),
+    ]
+    rows = [
+        ParkingSession(plate_number=f"00{i}ABC02", entry_time=t)
+        for i, t in enumerate(times)
+    ]
+    db.add_all(rows)
+    await db.commit()
+    response = await client.get(
+        "/api/v1/parking-sessions",
+        params={"date_from": "2026-06-15", "date_to": "2026-06-15"},
+    )
+    assert response.status_code == 200
+    assert {item["id"] for item in response.json()["items"]} == {rows[1].id, rows[2].id}
+    before = await client.get(
+        "/api/v1/parking-sessions", params={"date_to": "2026-06-14"}
+    )
+    assert [item["id"] for item in before.json()["items"]] == [rows[0].id]
+    after = await client.get(
+        "/api/v1/parking-sessions", params={"date_from": "2026-06-16"}
+    )
+    assert [item["id"] for item in after.json()["items"]] == [rows[3].id]
 
 
 async def test_sorting(client, seeded):

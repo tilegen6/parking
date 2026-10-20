@@ -7,11 +7,11 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .config import RecognizerConfig
 from .events import build_event, normalize_direction
-from .normalize import normalize_plate
+from .kz_format import normalize_kz
 from .quality import frame_ok
 from .vote import MajorityVote
 
@@ -44,6 +44,8 @@ class FrameResult:
     box: tuple[int, int, int, int] | None
     is_valid: bool  # прошёл ли формат KZ
     alts: list[str] = field(default_factory=list)  # прочие распознанные тексты
+    plate_raw: str | None = None
+    normalization_status: str | None = None
 
 
 def make_detector(cfg: RecognizerConfig):
@@ -90,25 +92,29 @@ class Pipeline:
         """
         scored = []
         for r, region_box in candidates:
-            norm = normalize_plate(r.text)
+            norm = normalize_kz(r.text, r.char_confidences)
             box = region_box if region_box is not None else r.box
             scored.append(
                 (
-                    norm.is_valid,
+                    norm.is_trusted,
                     plate_likeness(r.text),
                     r.confidence,
-                    norm.normalized,
-                    box,
+                    FrameResult(
+                        plate=norm.plate,
+                        confidence=r.confidence,
+                        box=box,
+                        is_valid=norm.is_trusted,
+                        plate_raw=r.text,
+                        normalization_status=norm.status,
+                    ),
                 )
             )
         if not scored:
             return None
         scored.sort(key=lambda t: (t[0], round(t[1], 1), t[2]), reverse=True)
-        is_valid, _like, conf, plate, box = scored[0]
-        alts = [t[3] for t in scored[:5] if t[3]]
-        return FrameResult(
-            plate=plate, confidence=conf, box=box, is_valid=is_valid, alts=alts
-        )
+        result = scored[0][3]
+        result.alts = [t[3].plate for t in scored[:5] if t[3].plate]
+        return result
 
     def process_frame(self, image) -> FrameResult | None:
         candidates = []
@@ -131,7 +137,7 @@ class Pipeline:
 
         tracker = SimpleTracker()
         votes: dict[int, MajorityVote] = {}
-        last: dict[int, tuple] = {}
+        last: dict[int, dict[str, tuple]] = {}
         for frame in source.frames():
             # фильтр качества (ТЗ 2.1) — только для видеопотока
             if not frame_ok(
@@ -147,7 +153,7 @@ class Pipeline:
                 box = res.box or (0, 0, w, h)
                 tid = tracker.update([box])[0]
                 votes.setdefault(tid, MajorityVote()).add(res.plate, res.confidence)
-                last[tid] = (frame, res)
+                last.setdefault(tid, {})[res.plate] = (frame, res)
             else:
                 tracker.update([])  # старим треки на кадре без номера
 
@@ -156,14 +162,8 @@ class Pipeline:
             vr = vote.result()
             if not vr:
                 continue
-            frame, res = last[tid]
-            voted = FrameResult(
-                plate=vr.plate,
-                confidence=vr.confidence,
-                box=res.box,
-                is_valid=normalize_plate(vr.plate).is_valid,
-                alts=res.alts,
-            )
+            frame, res = last[tid][vr.plate]
+            voted = replace(res, confidence=vr.confidence)
             rec = self._emit(voted, frame, sinks)
             if rec:
                 events.append(rec)
@@ -174,12 +174,19 @@ class Pipeline:
             return None
         below = res.confidence < self.cfg.confidence_threshold
         flag = "ok" if (res.is_valid and not below) else "low_confidence"
+        norm_status = res.normalization_status
+        if norm_status is None or (
+            not res.is_valid and norm_status in ("ok", "corrected")
+        ):
+            norm_status = "ok" if res.is_valid else "unknown_format"
         event = build_event(
             plate_number=res.plate or None,
             direction=normalize_direction(self.cfg.direction),
             confidence=round(res.confidence, 3),
             camera_name=self.cfg.camera_name or frame.source_name,
             event_time=frame.timestamp,
+            plate_raw=res.plate_raw,
+            normalization_status=norm_status,
         )
         contract = event.to_contract()
         record = {

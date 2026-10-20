@@ -42,8 +42,11 @@ from src.models import (
     PaymentStatus,
     RecognitionEvent,
     SessionStatus,
+    User,
+    UserRole,
 )
 from src.modules.access import normalize_plate, record_alert, resolve_access
+from src.modules.auth import record_audit, require_role
 from src.modules.tariff import get_active_tariff, price_for_session
 from src.schemas import PaginatedSessions, ParkingSessionOut
 
@@ -122,7 +125,7 @@ def _as_aware(dt: datetime | None) -> datetime | None:
 
 
 def _is_low_confidence(event: RecognitionEvent) -> bool:
-    if not event.plate_number:
+    if not event.plate_number or event.flag == EventFlag.LOW_CONFIDENCE:
         return True
     if (
         event.confidence is not None
@@ -564,7 +567,11 @@ async def _handle_exit(session: AsyncSession, event: RecognitionEvent) -> Sessio
 # HTTP API (задачи Backend #8–14)
 # --------------------------------------------------------------------------- #
 
-router = APIRouter(prefix="/api/v1", tags=["parking-sessions"])
+router = APIRouter(
+    prefix="/api/v1",
+    tags=["parking-sessions"],
+    dependencies=[Depends(require_role(*UserRole.ALL))],
+)
 
 # Разрешённые поля сортировки (whitelist — защита от инъекций в order_by)
 _SORT_FIELDS = {
@@ -725,8 +732,9 @@ async def get_parking_session(
 async def cancel_session(
     session_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(require_role(UserRole.OPERATOR))],
 ) -> ParkingSessionOut:
-    """Ручное закрытие сессии админом (ТС-8: зависшие закрываем только вручную)."""
+    """Ручное закрытие сессии оператором/админом с аудитом."""
     row = await session.get(ParkingSession, session_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
@@ -735,6 +743,9 @@ async def cancel_session(
             status_code=400, detail="Отменить можно только активную сессию"
         )
     row.status = SessionStatus.CANCELLED
+    await record_audit(
+        session, user, "session.cancel", entity="parking_session", entity_id=row.id
+    )
     await session.flush()
     # updated_at генерируется БД (onupdate) — подтягиваем в async-контексте,
     # иначе сериализация упрётся в лениво-экспайрнутый атрибут

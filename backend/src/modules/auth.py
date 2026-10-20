@@ -75,21 +75,28 @@ async def authenticate(
 
 
 # --- Зависимости FastAPI ---
-_bearer = HTTPBearer(auto_error=True)
+_bearer = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    creds: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
+    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     session: SessionDep,
 ) -> User:
     """Пользователь из Bearer-токена; 401 при невалидном/отключённом."""
+    if creds is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Требуется Bearer-токен",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = decode_token(creds.credentials)
-    except jwt.PyJWTError as e:
+        user_id = int(str(payload.get("sub") or 0))
+    except (jwt.PyJWTError, ValueError, TypeError) as e:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Недействительный токен"
         ) from e
-    user = await session.get(User, int(str(payload.get("sub") or 0)))
+    user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, "Пользователь не найден или отключён"

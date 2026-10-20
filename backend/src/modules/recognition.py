@@ -1,19 +1,21 @@
 """API распознавания: приём событий Hikvision + список событий для админки."""
 
+import json
 import logging
 import uuid
 from datetime import date, datetime, time, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import hikvision
 from src.database import get_session
-from src.models import Camera, CameraStatus, RecognitionEvent
+from src.models import Camera, CameraStatus, EventFlag, RecognitionEvent, User, UserRole
 from src.modules import session as session_service
 from src.modules.access import normalize_plate
+from src.modules.auth import record_audit, require_role
 from src.schemas import DirectionAssign, PaginatedEvents, RecognitionEventOut
 from src.storage import storage
 
@@ -52,35 +54,45 @@ async def _read_event(request: Request) -> hikvision.ParsedEvent:
 
     if content_type.startswith("multipart/form-data"):
         form = await request.form()
-        event = hikvision.ParsedEvent()
+        event = None
+        photos: dict[str, tuple[bytes, str]] = {}
         for key, value in form.multi_items():
             # Текстовые части (XML/JSON)
             if isinstance(value, str):
-                if value.lstrip().startswith("<"):
-                    event = hikvision.parse_xml(value)
+                if value.lstrip().startswith(("<", "{")):
+                    if event is not None:
+                        raise ValueError("Multiple event parts")
+                    event = (
+                        hikvision.parse_xml(value)
+                        if value.lstrip().startswith("<")
+                        else hikvision.parse_json(json.loads(value))
+                    )
                 continue
             # Файловые части (UploadFile)
             data = await value.read()
             filename = value.filename or key
             if filename.lower().endswith((".xml",)) or data.lstrip().startswith(b"<"):
-                parsed = hikvision.parse_xml(data)
-                # Сохраняем поля из XML, но не теряем уже накопленные фото
-                parsed.photos = event.photos
-                event = parsed
+                if event is not None:
+                    raise ValueError("Multiple event parts")
+                event = hikvision.parse_xml(data)
+            elif (
+                filename.lower().endswith(".json")
+                or value.content_type == "application/json"
+            ):
+                if event is not None:
+                    raise ValueError("Multiple event parts")
+                event = hikvision.parse_json(json.loads(data))
             elif value.content_type and value.content_type.startswith("image/"):
                 kind = hikvision.classify_photo(filename)
-                event.photos[kind] = (data, value.content_type)
+                photos[kind] = (data, value.content_type)
+        if event is None:
+            raise ValueError("Missing event part")
+        event.photos = photos
         return event
 
     body = await request.body()
     if content_type.startswith("application/json"):
-        import json
-
-        try:
-            return hikvision.parse_json(json.loads(body))
-        except json.JSONDecodeError:
-            logger.error("Невалидный JSON от камеры")
-            return hikvision.ParsedEvent(raw_payload=body.decode("utf-8", "replace"))
+        return hikvision.parse_json(json.loads(body))
 
     # По умолчанию пробуем XML
     return hikvision.parse_xml(body)
@@ -92,7 +104,10 @@ async def receive_anpr_event(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict[str, object]:
     """Принять событие распознавания от камеры Hikvision и сохранить его."""
-    event = await _read_event(request)
+    try:
+        event = await _read_event(request)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, "Некорректное событие ANPR") from exc
     logger.info(
         "ANPR событие: номер=%s направление=%s камера=%s",
         event.plate_number,
@@ -120,8 +135,8 @@ async def receive_anpr_event(
 
     # Канонизируем номер один раз здесь — дальше вся логика (сессии, списки,
     # Kaspi) сравнивает уже нормализованный. Сырой текст храним отдельно.
-    raw_plate = event.plate_number
-    norm_plate = normalize_plate(raw_plate) or None
+    raw_plate = event.plate_raw if event.plate_raw is not None else event.plate_number
+    norm_plate = normalize_plate(event.plate_number) or None
 
     record = RecognitionEvent(
         plate_number=norm_plate,
@@ -134,6 +149,9 @@ async def receive_anpr_event(
         vehicle_photo_url=vehicle_url,
         plate_photo_url=plate_url,
         raw_payload=event.raw_payload,
+        flag=EventFlag.LOW_CONFIDENCE
+        if event.normalization_status not in (None, "ok", "corrected")
+        else None,
     )
     session.add(record)
     await session.flush()
@@ -150,7 +168,11 @@ async def receive_anpr_event(
     }
 
 
-@router.get("/recognition/events", response_model=PaginatedEvents)
+@router.get(
+    "/recognition/events",
+    response_model=PaginatedEvents,
+    dependencies=[Depends(require_role(*UserRole.ALL))],
+)
 async def list_events(
     session: Annotated[AsyncSession, Depends(get_session)],
     page: int = Query(1, ge=1),
@@ -220,7 +242,11 @@ async def list_events(
     )
 
 
-@router.get("/recognition/events/{event_id}", response_model=RecognitionEventOut)
+@router.get(
+    "/recognition/events/{event_id}",
+    response_model=RecognitionEventOut,
+    dependencies=[Depends(require_role(*UserRole.ALL))],
+)
 async def get_event(
     event_id: int,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -239,6 +265,7 @@ async def assign_event_direction(
     event_id: int,
     body: DirectionAssign,
     session: Annotated[AsyncSession, Depends(get_session)],
+    user: Annotated[User, Depends(require_role(UserRole.OPERATOR))],
 ) -> dict[str, object]:
     """ТС-7: оператор вручную назначает ENTRY/EXIT событию с UNKNOWN.
 
@@ -258,8 +285,17 @@ async def assign_event_direction(
         )
 
     event.direction = body.direction.upper()
-    event.flag = None  # снимаем с ручной проверки; обработчик может переставить
+    if event.flag != EventFlag.LOW_CONFIDENCE:
+        event.flag = None
     result = await session_service.handle_recognition_event(session, event)
+    await record_audit(
+        session,
+        user,
+        "event.direction",
+        entity="recognition_event",
+        entity_id=event.id,
+        detail=event.direction,
+    )
     return {
         "id": event.id,
         "direction": event.direction,

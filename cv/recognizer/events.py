@@ -49,10 +49,12 @@ class RecognitionEvent:
     plate_photo: str | None = None
     vehicle_photo: str | None = None
     raw_ref: str | None = None
+    plate_raw: str | None = None
+    normalization_status: str | None = None
 
     def to_contract(self) -> dict:
         """Чистая форма контракта (валидна по recognition-event.schema.json)."""
-        return {
+        result = {
             "plate_number": self.plate_number,
             "direction": self.direction.value,
             "event_time": _iso(self.event_time),
@@ -62,10 +64,15 @@ class RecognitionEvent:
             "photos": {"plate": self.plate_photo, "vehicle": self.vehicle_photo},
             "raw_ref": self.raw_ref,
         }
+        if self.plate_raw is not None:
+            result["plate_raw"] = self.plate_raw
+        if self.normalization_status is not None:
+            result["normalization_status"] = self.normalization_status
+        return result
 
     def to_backend_json(self) -> dict:
         """Форма для POST /api/v1/hikvision/anpr-event (hikvision.parse_json)."""
-        return {
+        result = {
             "plateNumber": self.plate_number,
             "direction": self.direction.value,
             "confidence": self.confidence,
@@ -73,6 +80,11 @@ class RecognitionEvent:
             "channelName": self.camera_name,
             "source": self.source,
         }
+        if self.plate_raw is not None:
+            result["plateRaw"] = self.plate_raw
+        if self.normalization_status is not None:
+            result["normalizationStatus"] = self.normalization_status
+        return result
 
 
 def build_event(
@@ -85,6 +97,8 @@ def build_event(
     plate_photo: str | None = None,
     vehicle_photo: str | None = None,
     raw_ref: str | None = None,
+    plate_raw: str | None = None,
+    normalization_status: str | None = None,
 ) -> RecognitionEvent:
     return RecognitionEvent(
         plate_number=plate_number or None,
@@ -95,4 +109,6 @@ def build_event(
         plate_photo=plate_photo,
         vehicle_photo=vehicle_photo,
         raw_ref=raw_ref,
+        plate_raw=plate_raw,
+        normalization_status=normalization_status,
     )

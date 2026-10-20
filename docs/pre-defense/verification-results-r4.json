@@ -1,0 +1,134 @@
+{
+  "version": "pre-defense-1-r4",
+  "base_commit": "4a4c046761c0cbfb26672d33be29d189510f1ccb",
+  "checked_at_utc": "2026-10-20T00:54:48.213573+00:00",
+  "pytest_passed": {
+    "backend": 158,
+    "cv": 103
+  },
+  "pytest_total": 261,
+  "frontend_tree": "24749ecd150bbc789bfe75644e83452657cbbb44",
+  "checks": [
+    {
+      "command": [
+        "python",
+        "-m",
+        "ruff",
+        "check",
+        "backend/"
+      ],
+      "exit": 0,
+      "summary": "All checks passed!\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "ruff",
+        "format",
+        "--check",
+        "backend/"
+      ],
+      "exit": 0,
+      "summary": "60 files already formatted\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit": 0,
+      "summary": "........................................................................ [ 45%]\n........................................................................ [ 91%]\n..............                                                           [100%]\n158 passed in 26.17s\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "mypy",
+        "src/"
+      ],
+      "exit": 0,
+      "summary": "Success: no issues found in 26 source files\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "ruff",
+        "check",
+        "cv/"
+      ],
+      "exit": 0,
+      "summary": "All checks passed!\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "ruff",
+        "format",
+        "--check",
+        "cv/"
+      ],
+      "exit": 0,
+      "summary": "40 files already formatted\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-q"
+      ],
+      "exit": 0,
+      "summary": "........................................................................ [ 69%]\n...............................                                          [100%]\n103 passed in 1.83s\n"
+    },
+    {
+      "command": [
+        "python",
+        "-m",
+        "mypy",
+        "."
+      ],
+      "exit": 0,
+      "summary": "Success: no issues found in 40 source files\n"
+    },
+    {
+      "command": [
+        "npm.cmd",
+        "run",
+        "lint"
+      ],
+      "exit": 0,
+      "summary": "\n> smart-parking-frontend@0.1.0 lint\n> eslint .\n\n"
+    },
+    {
+      "command": [
+        "npm.cmd",
+        "run",
+        "typecheck"
+      ],
+      "exit": 0,
+      "summary": "\n> smart-parking-frontend@0.1.0 typecheck\n> tsc --noEmit\n\n"
+    },
+    {
+      "command": [
+        "npm.cmd",
+        "run",
+        "build"
+      ],
+      "exit": 0,
+      "summary": "\n> smart-parking-frontend@0.1.0 build\n> tsc --noEmit && vite build\n\nvite v5.4.21 building for production...\ntransforming...\n✓ 118 modules transformed.\nrendering chunks...\ncomputing gzip size...\ndist/index.html                   0.78 kB │ gzip:  0.47 kB\ndist/assets/index-BKMiMpQc.css   29.37 kB │ gzip:  5.81 kB\ndist/assets/index-CG569Y9y.js   348.98 kB │ gzip: 99.80 kB\n✓ built in 2.78s\n"
+    }
+  ],
+  "date_controls": [
+    "00:35 UTC passed",
+    "12:35 UTC passed"
+  ],
+  "limits": [
+    "SQLite and synthetic/mocked integrations",
+    "no field OCR, real payment, hardware or restore trial"
+  ]
+}

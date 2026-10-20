@@ -9,6 +9,7 @@
 """
 
 import logging
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -27,6 +28,8 @@ class ParsedEvent:
     raw_payload: str | None = None
     # имя_объекта -> (bytes, content_type)
     photos: dict[str, tuple[bytes, str]] = field(default_factory=dict)
+    plate_raw: str | None = None
+    normalization_status: str | None = None
 
 
 def _strip_ns(tag: str) -> str:
@@ -59,7 +62,7 @@ def _parse_time(value: str | None) -> datetime:
         try:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
-            logger.warning("Не удалось разобрать время события: %s", value)
+            raise ValueError("Invalid event timestamp") from None
     return datetime.now(timezone.utc)
 
 
@@ -74,8 +77,13 @@ def parse_xml(payload: bytes | str) -> ParsedEvent:
     try:
         root = ET.fromstring(raw)
     except ET.ParseError as exc:
-        logger.error("Битый XML от камеры: %s", exc)
-        return event
+        raise ValueError("Invalid event XML") from exc
+
+    if not any(
+        _strip_ns(el.tag).lower() in {"licenseplate", "platenumber", "plate"}
+        for el in root.iter()
+    ):
+        raise ValueError("Missing plate field")
 
     event.plate_number = _find_first(root, "licensePlate", "plateNumber", "plate")
     event.direction = _normalize_direction(
@@ -88,12 +96,10 @@ def parse_xml(payload: bytes | str) -> ParsedEvent:
 
     conf = _find_first(root, "confidenceLevel", "confidence")
     if conf:
-        try:
-            value = float(conf)
-            # Hikvision обычно отдаёт 0..100, фронту удобнее 0..1
-            event.confidence = value / 100 if value > 1 else value
-        except ValueError:
-            pass
+        event.confidence = _confidence(conf)
+
+    if event.plate_number and len(event.plate_number) > 32:
+        raise ValueError("Plate is too long")
 
     return event
 
@@ -102,6 +108,8 @@ def parse_json(data: dict[str, object]) -> ParsedEvent:
     """Разобрать JSON-событие (плоский или вложенный в ANPR/AccessControllerEvent)."""
     import json
 
+    if not isinstance(data, dict):
+        raise ValueError("Event JSON must be an object")
     event = ParsedEvent(raw_payload=json.dumps(data, ensure_ascii=False))
 
     # Развернём вложенные блоки в один уровень для поиска ключей
@@ -127,7 +135,11 @@ def parse_json(data: dict[str, object]) -> ParsedEvent:
         return None
 
     plate = pick("licensePlate", "plateNumber", "plate")
-    event.plate_number = str(plate) if plate is not None else None
+    if not any(name in flat for name in ("licenseplate", "platenumber", "plate")):
+        raise ValueError("Missing plate field")
+    if plate is not None and (not isinstance(plate, str) or len(plate) > 32):
+        raise ValueError("Invalid plate field")
+    event.plate_number = plate if isinstance(plate, str) else None
     event.direction = _normalize_direction(
         str(pick("direction", "vehicleDirection") or "") or None
     )
@@ -139,13 +151,29 @@ def parse_json(data: dict[str, object]) -> ParsedEvent:
 
     conf = pick("confidenceLevel", "confidence")
     if conf is not None:
-        try:
-            value = float(str(conf))
-            event.confidence = value / 100 if value > 1 else value
-        except (ValueError, TypeError):
-            pass
+        event.confidence = _confidence(conf)
+
+    raw_plate = pick("plateRaw")
+    if raw_plate is not None:
+        if not isinstance(raw_plate, str) or len(raw_plate) > 32:
+            raise ValueError("Invalid raw plate")
+        event.plate_raw = raw_plate
+    norm_status = pick("normalizationStatus")
+    if norm_status is not None:
+        if norm_status not in ("ok", "corrected", "ambiguous", "unknown_format"):
+            raise ValueError("Invalid normalization status")
+        event.normalization_status = str(norm_status)
 
     return event
+
+
+def _confidence(value: object) -> float:
+    if isinstance(value, bool):
+        raise ValueError("Invalid confidence")
+    result = float(str(value))
+    if not math.isfinite(result) or not 0 <= result <= 100:
+        raise ValueError("Confidence is out of range")
+    return result / 100 if result > 1 else result
 
 
 _PLATE_PART = re.compile(r"(licensePlate|plate)", re.IGNORECASE)

@@ -490,12 +490,14 @@ def create_app(cfg: RecognizerConfig | None = None) -> FastAPI:
             # движок/детектор не установлен в этом образе/окружении
             raise HTTPException(400, str(e)) from e
         plate = res.plate if res and res.plate else None
-        below = res.confidence < base_conf if res else True
+        below = (not res.is_valid or res.confidence < base_conf) if res else True
         return {
             "plate_number": plate,
             "confidence": round(res.confidence, 3) if res else None,
             "flag": "low_confidence" if below else "ok",
             "is_valid": bool(res and res.is_valid),
+            "plate_raw": res.plate_raw if res else None,
+            "normalization_status": res.normalization_status if res else None,
             "candidates": res.alts if res else [],
             "annotated_image": _annotate(img, plate, res.box if res else None),
             "version": version,

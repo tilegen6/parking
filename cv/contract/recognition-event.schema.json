@@ -7,6 +7,8 @@
   "required": ["plate_number", "direction", "event_time", "source"],
   "additionalProperties": false,
   "properties": {
+    "plate_raw": {"type": ["string", "null"], "maxLength": 32},
+    "normalization_status": {"type": "string", "enum": ["ok", "corrected", "ambiguous", "unknown_format"]},
     "plate_number": {
       "type": ["string", "null"],
       "maxLength": 32,

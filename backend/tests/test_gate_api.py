@@ -59,7 +59,7 @@ async def test_assign_camera_to_gate(client, db):
     assert r.json()["gate_id"] == gid
 
 
-async def test_sessions_filter_by_gate(client, db):
+async def test_sessions_filter_by_gate(client, db, operator_headers):
     g1 = await client.post("/api/v1/gates", json={"name": "Двор"})
     g2 = await client.post("/api/v1/gates", json={"name": "Отель", "level": 2})
     id1, id2 = g1.json()["id"], g2.json()["id"]
@@ -82,7 +82,9 @@ async def test_sessions_filter_by_gate(client, db):
     )
     await db.commit()
 
-    r = await client.get("/api/v1/parking-sessions", params={"gate_id": id1})
+    r = await client.get(
+        "/api/v1/parking-sessions", params={"gate_id": id1}, headers=operator_headers
+    )
     plates = [i["plate_number"] for i in r.json()["items"]]
     assert plates == ["111AAA01"]
     # gate_id прокидывается в ответе

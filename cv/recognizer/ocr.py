@@ -23,6 +23,7 @@ class OcrResult:
     text: str
     confidence: float
     box: tuple[int, int, int, int] | None = None  # x1, y1, x2, y2
+    char_confidences: list[float] | None = None
 
 
 class PlateOcr(ABC):
@@ -97,7 +98,11 @@ class TemplateOcr(PlateOcr):
             scores.append(max(0.0, min(1.0, best_score)))
         if not chars:
             return []
-        return [OcrResult("".join(chars), sum(scores) / len(scores))]
+        return [
+            OcrResult(
+                "".join(chars), sum(scores) / len(scores), char_confidences=scores
+            )
+        ]
 
 
 def _upscale_small(image: np.ndarray, min_height: int = 64, max_scale: float = 4.0):
@@ -184,5 +189,13 @@ class FastPlateOcr(PlateOcr):
         for p in self._ocr.run(gray, return_confidence=True):
             probs = getattr(p, "char_probs", None)
             conf = float(np.mean(probs)) if probs is not None and len(probs) else 0.0
-            results.append(OcrResult(p.plate, conf))
+            results.append(
+                OcrResult(
+                    p.plate,
+                    conf,
+                    char_confidences=[float(v) for v in probs]
+                    if probs is not None
+                    else None,
+                )
+            )
         return results

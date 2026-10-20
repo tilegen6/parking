@@ -13,7 +13,13 @@ DT = datetime(2026, 6, 23, 10, 0, 0, tzinfo=timezone.utc)
 
 def test_build_event_contract_fields():
     ev = build_event(
-        "123ABC01", "entry", confidence=0.9, camera_name="cam1", event_time=DT
+        "123ABC01",
+        "entry",
+        confidence=0.9,
+        camera_name="cam1",
+        event_time=DT,
+        plate_raw="123ABC01",
+        normalization_status="ok",
     )
     c = ev.to_contract()
     assert c["plate_number"] == "123ABC01"
@@ -65,6 +71,12 @@ def test_contract_matches_schema():
     with open(schema_path, encoding="utf-8") as f:
         schema = json.load(f)
     ev = build_event(
-        "123ABC01", "entry", confidence=0.9, camera_name="cam1", event_time=DT
+        "123ABC01",
+        "entry",
+        confidence=0.9,
+        camera_name="cam1",
+        event_time=DT,
+        plate_raw="123ABCO1",
+        normalization_status="corrected",
     )
     jsonschema.validate(ev.to_contract(), schema)  # бросит при несоответствии

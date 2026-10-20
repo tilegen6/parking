@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import service  # noqa: E402
 from recognizer import synth  # noqa: E402
 from recognizer.config import RecognizerConfig  # noqa: E402
+from recognizer.pipeline import FrameResult  # noqa: E402
 
 
 def _client() -> TestClient:
@@ -102,3 +103,19 @@ def test_shutdown_stops_streams(monkeypatch):
         assert client.get("/health").status_code == 200
         assert not stopped
     assert len(stopped) == 1
+
+
+def test_high_confidence_invalid_format_is_flagged_for_review(monkeypatch):
+    monkeypatch.setattr(
+        service.Pipeline,
+        "process_frame",
+        lambda self, image: FrameResult("237BLM99", 0.99, None, False),
+    )
+    img = synth.render_plate("123ABC02")
+    _, buf = cv2.imencode(".png", img)
+    response = _client().post(
+        "/recognize", files={"file": ("plate.png", buf.tobytes(), "image/png")}
+    )
+    assert response.status_code == 200
+    assert response.json()["flag"] == "low_confidence"
+    assert response.json()["is_valid"] is False

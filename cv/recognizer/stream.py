@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .config import RecognizerConfig
-from .normalize import normalize_plate
 from .pipeline import FrameResult
 from .track import SimpleTracker
 from .vote import MajorityVote
@@ -29,6 +28,7 @@ class _TrackState:
     hits: int = 0
     last_frame: object = None  # последний Frame трека
     last_res: FrameResult | None = None
+    readings: dict[str, tuple[object, FrameResult]] = field(default_factory=dict)
 
 
 class StreamPipeline:
@@ -79,6 +79,7 @@ class StreamPipeline:
             st.hits += 1
             st.last_frame = frame
             st.last_res = res
+            st.readings[res.plate] = (frame, res)
         else:
             self.tracker.update([])  # старим треки на кадре без номера
 
@@ -117,14 +118,9 @@ class StreamPipeline:
             return None  # тот же номер недавно уже отправляли
         self._cooldown[vr.plate] = now
 
-        voted = FrameResult(
-            plate=vr.plate,
-            confidence=vr.confidence,
-            box=st.last_res.box if st.last_res else None,
-            is_valid=normalize_plate(vr.plate).is_valid,
-            alts=st.last_res.alts if st.last_res else [],
-        )
-        rec = self.pipeline._emit(voted, st.last_frame, self.sinks)
+        frame, res = st.readings[vr.plate]
+        voted = replace(res, confidence=vr.confidence)
+        rec = self.pipeline._emit(voted, frame, self.sinks)
         if rec:
             self.events_emitted += 1
         return rec

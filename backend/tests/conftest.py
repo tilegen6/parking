@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from src.database import Base, get_session
+from src.models import User, UserRole
 from src.modules import access as access_module
 from src.modules import auth as auth_module
 from src.modules import camera as camera_module
@@ -50,6 +51,18 @@ async def db(sessionmaker_):
     """Сессия для прямого сидинга/проверок в БД."""
     async with sessionmaker_() as s:
         yield s
+
+
+@pytest_asyncio.fixture
+async def operator_headers(db):
+    user = User(
+        username="session-operator",
+        role=UserRole.OPERATOR,
+        password_hash="unused-token-fixture",
+    )
+    db.add(user)
+    await db.commit()
+    return {"Authorization": "Bearer " + auth_module.create_access_token(user)}
 
 
 @pytest_asyncio.fixture

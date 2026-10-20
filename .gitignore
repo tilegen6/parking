@@ -5,6 +5,9 @@
 .env.*
 !.env.example
 
+# capture_server.py can also be launched from the repository root
+/captures/
+
 # Python
 __pycache__/
 *.py[cod]

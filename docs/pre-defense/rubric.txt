@@ -1,0 +1,100 @@
+До 20 октября
+
+№	Component	Presentation	Committee evaluation
+1	Project proposal	Project title, team members, supervisor, problem statement, target users, aim, objectives, expected outcomes, and project scope	Whether the problem is clearly defined, the scope is realistic, and the project involves sufficient engineering complexity
+2	Evidence of the relevance	Interviews with protentional users, discussions with the client, observations of relevant processes, or analysis of available data
+3–5 discussions with user representatives or a substantive agreement with the actual client. 	What evidence informs the requirements and whether verified findings are distinguished from assumptions
+3	Literature review	A critical review of relevant sources and a structured analysis table of publications
+at least 12 meaningfully used sources, including at least 8 scientific publications. For rapidly evolving topics, the core body of sources should be selected from the last five years, while retaining essential foundational works.	What approaches exist, what is already known, and which limitations the project takes into account
+4	Existing system comparison	A comparison of existing systems against a consistent set of criteria
+3–5 relevant systems and 6–10 comparison criteria. If there are fewer comparable systems, this must be justified.	Why the proposed solution is needed and whether claims about the capabilities and limitations of existing systems are supported by evidence
+5	Technology comparison	A comparison of alternatives for key technology decisions
+At least three key technical solutions, with 2–3 reasonable alternatives for each. For example: server platform, data storage, and the method of component interaction.	Whether technology choices are justified by the project requirements
+6	Requirements specification	Functional and non-functional requirements, priorities, and acceptance criteria	Whether the fulfilment of each mandatory requirement can be verified
+7	Architecture and Diagrams	A consistent set of diagrams and an architectural description
+1)	System context diagram
+2)	Use Case Diagram
+3)	Component Diagram (draft) 	Whether requirements, components, data, and scenarios are aligned
+8	UX / prototype	Mockups of key user scenarios; for projects without a user interface, examples of APIs, commands, or input and output data	Whether it is clear how users or external systems will interact with the solution
+9	Verification and evaluation plan	A testing plan, outcome metrics, measurement conditions, and a baseline solution for comparison	How the achievement of the project aim will be demonstrated
+10	Project management and risks	A Git repository, a YouTrack project, allocation of responsibilities, project milestones, risks, and dependencies	Whether project activities are traceable and the next steps are clearly defined
+11	Supervisor feedback	Supervisor’s feedback on key deliverables and decisions on how to address the comments	Whether the supervisor reviewed the substance of the work and whether that review led to meaningful improvements
+
+Git Repository Requirements
+Students must maintain a GitHub or GitLab repository throughout the diploma project. The repository must provide a traceable record of project development, individual contributions, and review activities.
+Step 1. Create the project repository
+•	Create a repository on GitHub or GitLab at the beginning of the project.
+•	Use a clear name that identifies the project.
+•	Maintain the same repository throughout the project.
+•	A private repository is acceptable, provided the supervisor and committee can access it.
+Step 2. Provide access and identify contributors
+•	Give all team members and the supervisor appropriate access.
+•	Provide the committee with access before each pre-defense.
+•	Each student must use their own account and identifiable commit author details.
+•	Shared accounts must not be used to submit contributions.
+Step 3. Prepare the README
+The README.md file must include:
+•	Project title and brief description.
+•	Problem statement, target users, and expected outcomes.
+•	Team members, their responsibilities, and supervisor.
+•	Project scope and current development status.
+•	Selected technologies.
+•	Links to the YouTrack project and project documentation.
+•	Setup, execution, and testing instructions as soon as runnable code is available.
+Step 4. Organize the repository
+Create a clear structure covering:
+•	Source code: application code, organized by component.
+•	Documentation: proposal, literature review, comparisons, requirements, and architectural decisions.
+•	Diagrams: editable source files and readable exports.
+•	Tests: automated tests and supporting test materials.
+•	Configuration: dependency definitions and configuration examples.
+Add a suitable .gitignore file. Passwords, API keys, personal data, and other confidential information must not be committed. Use configuration examples with placeholder values.
+Step 5. Record work progressively
+•	Commit changes throughout the project as meaningful tasks or subtasks are completed.
+•	Each commit must represent a coherent change and have a descriptive message.
+•	Documentation and design changes must also be recorded.
+•	Uploading the entire project immediately before a pre-defense does not demonstrate continuous development.
+•	Assessment will consider the substance and progression of contributions rather than the number of commits.
+Step 6. Link changes to YouTrack tasks
+•	Create a YouTrack task for each meaningful work item.
+•	Each task must identify the responsible student, expected outcome, acceptance criteria, and deadline.
+•	Include the task ID in the branch name and commit or pull/merge request description.
+•	Add a link to the relevant pull/merge request or commit in the YouTrack task.
+•	Mark a task as completed only when its acceptance criteria have been met.
+Example:
+•	Task: DIP-23 – Define the database schema
+•	Branch: DIP-23-database-schema
+•	Commit: DIP-23: Add initial database schema and ER diagram
+Step 7. Use branches and pull/merge requests
+•	Maintain main as the reviewed baseline of the project.
+•	Develop changes in separate task or feature branches.
+•	Submit changes through a Pull Request on GitHub or a Merge Request on GitLab.
+•	Each request must explain the changes, reference the YouTrack task, and describe how the work was checked.
+•	For team projects, another team member must review the changes before merging.
+•	For individual projects, the supervisor must review selected significant changes at agreed checkpoints.
+Step 8. Tag each pre-defense submission
+Create a Git tag identifying the exact version submitted for each stage:
+•	pre-defense-1
+•	pre-defense-2
+•	final-pre-defense
+For each submission, provide the repository link, tag, summary of completed work, known limitations, and outstanding tasks. Continue development in the same repository without moving or replacing previously submitted tags.
+Step 9. Demonstrate the repository during the pre-defense
+Students must be prepared to:
+•	Show the repository structure and development history.
+•	Trace a selected YouTrack task to its implementation or deliverable.
+•	Explain individual contributions and selected changes.
+•	Show review comments and the resulting revisions.
+•	Explain the purpose and operation of submitted code.
+•	Demonstrate how to run and test the available implementation.
+Minimum Requirements for the 24 October
+The repository must contain:
+•	A completed project README.
+•	Project proposal and scope.
+•	Literature review, existing system comparison, and technology comparison.
+•	Initial requirements and acceptance criteria.
+•	Required architectural diagrams, including editable source files.
+•	Prototype materials or a link to the prototype.
+•	Verification and evaluation plan.
+•	A link to YouTrack with assigned and prioritized tasks.
+•	Evidence of progressive contributions from each team member.
+A complete application is not required at this stage. The repository must demonstrate that analysis, design, planning, and supervision have already taken place.

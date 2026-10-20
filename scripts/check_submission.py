@@ -1,6 +1,7 @@
 """Check submission structure, traceability, reproducible diagrams and local links."""
 
 import ast
+import collections
 import json
 import re
 import sys
@@ -208,6 +209,7 @@ def package():
         *DOCS.rglob("*.html"),
         *DOCS.rglob("*.svg"),
         *DOCS.rglob("*.dot"),
+        *DOCS.rglob("*.txt"),
     ]
     require(SECRET.search("ghp_" + "A" * 40), "secret detector control failed")
     links = 0
@@ -251,12 +253,76 @@ def package():
     print("PACKAGE_VERIFIED")
 
 
+def readiness():
+    rubric = read("rubric.txt")
+    presentation = re.findall(r"^(\d+)\t[^\n]+", rubric, re.M)
+    steps = re.findall(r"^Step (\d+)\.", rubric, re.M)
+    require(
+        "Minimum Requirements for the 24 October" in rubric, "minimum section missing"
+    )
+    minimum = rubric.split("Minimum Requirements for the 24 October", 1)[1]
+    items = re.findall(r"^•\s+", minimum, re.M)
+    expected = (
+        {f"C{int(i):02d}" for i in presentation}
+        | {f"G{int(i):02d}" for i in steps}
+        | {f"M{i:02d}" for i in range(1, len(items) + 1)}
+    )
+    require(presentation and steps and items, "rubric sections missing")
+    rows = [
+        [cell.strip() for cell in line.split("|")[1:-1]]
+        for line in read("14-readiness.md").splitlines()
+        if re.match(r"\| [CGM]\d{2} \|", line)
+    ]
+    ids = [row[0] for row in rows]
+    require(
+        len(ids) == len(set(ids)) and set(ids) == expected, "rubric coverage mismatch"
+    )
+    counts = collections.Counter()
+    for ident, criterion, status, evidence, pending in rows:
+        require(criterion and "](" in evidence, f"{ident}: missing artifact link")
+        require(
+            status in ["Готово", "Частично", "Нужно участие", "Исключено"],
+            "unknown readiness status",
+        )
+        require(
+            (status == "Готово") == (pending == "—"),
+            f"{ident}: misleading pending state",
+        )
+        if status == "Исключено":
+            require(
+                "YouTrack" in criterion and "владельцем" in pending,
+                "unsupported exclusion",
+            )
+        counts[status] += 1
+    actions = read("15-needed-from-user.md")
+    require(
+        set(re.findall(r"^## (U\d+) ", actions, re.M))
+        == {f"U{i}" for i in range(1, 6)},
+        "missing human action",
+    )
+    by_id = {r[0]: r for r in rows}
+    for ident in ["C02", "C11", "G01", "G02", "G05", "G07", "G09", "M09"]:
+        require(
+            by_id[ident][2] != "Готово",
+            f"{ident}: human/historical evidence not supplied",
+        )
+    for ident in ["G06", "M08"]:
+        require(by_id[ident][2] == "Исключено", "YouTrack is explicitly out of scope")
+    print(
+        f"{len(rows)} rubric items; ready={counts['Готово']}, "
+        f"partial={counts['Частично']}, human={counts['Нужно участие']}, "
+        f"excluded={counts['Исключено']}; 5 concrete human actions"
+    )
+    print("READINESS_VERIFIED")
+
+
 if __name__ == "__main__":
     modes = {
         "research": research,
         "traceability": traceability,
         "artifacts": artifacts,
         "package": package,
+        "readiness": readiness,
     }
     try:
         mode = sys.argv[1] if len(sys.argv) > 1 else "all"

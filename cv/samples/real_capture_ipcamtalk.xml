@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  РЕАЛЬНЫЙ дословный payload, снятый пользователем с камеры Hikvision
+  ОБЕЗЛИЧЕННЫЙ пример структуры payload камеры Hikvision
   iDS-2CD7A26G0/P-IZHS (родственная модель той же DeepinView ANPR-серии,
   прошивка V5.8.60), HTTP listening на порту 9091.
 
@@ -9,16 +9,17 @@
 
   Это XML-часть multipart/form-data; следом шли 3 JPEG-части
   (licensePlatePicture.jpg, vehiclePicture.jpg, detectionPicture.jpg).
-  Артефакты переноса строк из форума (licenseBright / vehicleLogoRecog) здесь
-  исправлены; значения не менялись.
+  Артефакты переноса строк из форума исправлены. Номер автомобиля, IP/MAC,
+  время, pId и UUID заменены синтетическими значениями. Это не съёмка
+  на объекте Arka Company и не доказательство проведённого испытания.
 -->
 <EventNotificationAlert version="2.0" xmlns="http://www.hikvision.com/ver20/XMLSchema">
-  <ipAddress>192.168.2.46</ipAddress>
+  <ipAddress>192.0.2.10</ipAddress>
   <portNo>9091</portNo>
   <protocol>HTTP</protocol>
-  <macAddress>bc:9b:5e:b3:66:5d</macAddress>
+  <macAddress>02:00:00:00:00:10</macAddress>
   <channelID>1</channelID>
-  <dateTime>2023-11-02T21:10:32+08:00</dateTime>
+  <dateTime>2026-06-15T10:00:00+05:00</dateTime>
   <activePostCount>1</activePostCount>
   <eventType>ANPR</eventType>
   <eventState>active</eventState>
@@ -26,7 +27,7 @@
   <channelName>Camera 01</channelName>
   <ANPR>
     <country>19</country>
-    <licensePlate>ZG6140G</licensePlate>
+    <licensePlate>123ABC02</licensePlate>
     <line>1</line>
     <direction>forward</direction>
     <confidenceLevel>100</confidenceLevel>
@@ -36,7 +37,7 @@
     <dangmark>no</dangmark>
     <twoWheelVehicle>no</twoWheelVehicle>
     <threeWheelVehicle>no</threeWheelVehicle>
-    <plateCharBelieve>99,99,99,99,99,99,99</plateCharBelieve>
+    <plateCharBelieve>99,99,99,99,99,99,99,99</plateCharBelieve>
     <vehicleType>vehicle</vehicleType>
     <detectDir>8</detectDir>
     <detectType>0</detectType>
@@ -56,45 +57,45 @@
         <type>licensePlatePicture</type>
         <dataType>0</dataType>
         <picRecogMode>0</picRecogMode>
-        <absTime>20231102211032591</absTime>
-        <pId>2023110221103333400Eqh1QVsXguPWo</pId>
+        <absTime>20260615100000000</absTime>
+        <pId>demo-license-plate</pId>
       </pictureInfo>
       <pictureInfo>
         <fileName>vehiclePicture.jpg</fileName>
         <type>vehiclePicture</type>
         <dataType>0</dataType>
         <picRecogMode>0</picRecogMode>
-        <absTime>20231102211032591</absTime>
+        <absTime>20260615100000000</absTime>
         <plateRect>
           <X>448</X>
           <Y>406</Y>
           <width>117</width>
           <height>40</height>
         </plateRect>
-        <pId>2023110221103333400dMbnmyWOBEl9E</pId>
+        <pId>demo-vehicle</pId>
       </pictureInfo>
       <pictureInfo>
         <fileName>detectionPicture.jpg</fileName>
         <type>detectionPicture</type>
         <dataType>0</dataType>
         <picRecogMode>0</picRecogMode>
-        <absTime>20231102211032591</absTime>
+        <absTime>20260615100000000</absTime>
         <plateRect>
           <X>448</X>
           <Y>406</Y>
           <width>117</width>
           <height>40</height>
         </plateRect>
-        <pId>2023110221103333400F2DLcGhtwvQgq</pId>
+        <pId>demo-detection</pId>
       </pictureInfo>
     </pictureInfoList>
-    <originalLicensePlate>ZG6140G</originalLicensePlate>
+    <originalLicensePlate>123ABC02</originalLicensePlate>
     <CRIndex>19</CRIndex>
     <vehicleListName>otherList</vehicleListName>
     <plateCategory></plateCategory>
     <plateSize>0</plateSize>
   </ANPR>
-  <UUID>2023110221103333200phCHLeHslaDArysAvVOz5HhA01u9tYrAz9UphtSwRP8c</UUID>
+  <UUID>00000000-0000-4000-8000-000000000001</UUID>
   <picNum>3</picNum>
   <monitoringSiteID></monitoringSiteID>
   <isDataRetransmission>false</isDataRetransmission>
